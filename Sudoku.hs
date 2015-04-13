@@ -1,117 +1,110 @@
-module Sudoku where
-
 import Data.Array.Unboxed
 import Data.List
 import Data.Maybe
 
-data Sudoku = Sudoku (Array View (Array (Int, Int) (Maybe Int))) (UArray Int Bool) deriving Eq
+main :: IO ()
+main = interact (aux . solve . toSudoku) where
+    aux ss
+        = "found " ++ show (length ss) ++ " answers\n"
+        ++ concat [ "\n" ++ show s | s <- ss ]
 
-data View = GRD | ROW | COL | BOX deriving (Bounded, Enum, Eq, Ord, Ix)
+data Sudoku = Sudoku
+    { definite :: Array (V, I, I) (Maybe I)
+    , possible :: UArray C Bool
+    }
+    deriving Eq
 
-views :: [View]
-views = [minBound .. maxBound]
+data V = GRD | ROW | COL | BOX deriving (Bounded, Enum, Eq, Ix, Ord)
 
-chars :: String
-chars = ['1' .. '9']
+vs :: [V]
+vs = [minBound .. maxBound]
+
+type I = Int
+
+is :: [I]
+is = [0 .. n - 1]
+
+type C = Int
+cs :: [C]
+cs = [0 .. n * n * n - 1]
+
+n :: Int
+n = m * m
 
 m :: Int
 m = 3
 
-n :: Int
-n= m * m
-
-untilN :: [Int]
-untilN = [0 .. n - 1]
+chars :: String
+chars = ['1' .. '9']
 
 toSudoku :: String -> Sudoku
-toSudoku str = foldl aux newSudoku [ (i, j) | i <- untilN , j <- untilN ] where
-    aux sudoku (i, j)
-        = case elemIndex (lns !! i !! j) chars of
-            Just k
-                -> fill sudoku (toCoord GRD (i, j, k))
-            _
-                -> sudoku
-        where lns = lines str
+toSudoku str = foldl aux s0  [ (i, j) | i <- is , j <- is ] where
+    aux s (i, j) = case elemIndex (lines str !! i !! j) chars of
+        Just k  -> fill s (toC GRD (i, j, k))
+        Nothing -> s
+    s0 = Sudoku { definite = d , possible = p }
+    d = constArray ((minBound, 0, 0), (maxBound, n - 1, n - 1)) Nothing
+    p = constArray (0, n * n * n - 1) True
+    constArray bds val = array bds [ (i, val) | i <- range bds ]
 
 instance Show Sudoku where
-    show (Sudoku det _)
-        = unlines $ flip map untilN $ \ i ->
-            [ toChar (det ! GRD ! (i, j)) | j <- untilN ]
-        where
-            toChar (Just k) = chars !! k
-            toChar Nothing  = '.'
-
-newSudoku :: Sudoku
-newSudoku = Sudoku det poss where
-    det  = constArray (minBound, maxBound) (constArray ((0, 0), (n - 1, n - 1)) Nothing)
-    poss = constArray (0, n * n * n - 1) True
-    constArray bds value = array bds [ (i, value) | i <- range bds ]
-
-fill :: Sudoku -> Int -> Sudoku
-fill (Sudoku det poss) p
-    | poss ! p && and [ isNothing $ det ! v ! (i, j) | v <- views , let (i, j, _) = fromCoord v p ]
-        = Sudoku det' poss'
-    | otherwise
-        = error "fill"
-    where
-        det'  = det // [ (v, det ! v // [((i, j), Just k)]) | v <- views , let (i, j, k) = fromCoord v p ]
-        poss' = poss // [ (toCoord v (i, j, k), False) | v <- views, let (i, j, _) = fromCoord v p , k <- untilN ]
-
-erase :: Sudoku -> Int -> Sudoku
-erase (Sudoku det poss) p = Sudoku det poss' where
-    poss' = poss // [(p, False)]
-
-toCoord :: View -> (Int, Int, Int) -> Int
-toCoord GRD (i, j, k) = i * n * n + j * n + k
-toCoord ROW (i, j, k) = i * n * n + k * n + j
-toCoord COL (i, j, k) = k * n * n + i * n + j
-toCoord BOX (i, j, k) = (i `div` m * m + k `div` m) * n * n + (i `mod` m * m + k `mod` m) * n + j
-
-fromCoord :: View -> Int -> (Int, Int, Int)
-fromCoord v p = case v of
-    GRD -> (i, j, k)
-    ROW -> (i, k, j)
-    COL -> (j, k, i)
-    BOX -> (i `div` m * m + j `div` m, k, i `mod` m * m + j `mod` m)
-    where
-        i = p `div` n `div` n
-        j = p `div` n `mod` n
-        k = p `mod` n
+    show s = unlines [ [ toChar (definite s ! (GRD, i, j)) | j <- is ] | i <- is ] where
+        toChar (Just k) = chars !! k
+        toChar Nothing  = '.'
 
 solve :: Sudoku -> [Sudoku]
-solve s = case simplify s of
-    Just s' @ (Sudoku _ poss)
-        | s /= s'
-            -> solve s'
-        | isComplete s
-            -> [s]
-        | otherwise
-            -> solve (fill s p) ++ solve (erase s p)
-        where p = head (filter (poss !) [0 .. ])
-    Nothing
-        -> []
-
+solve s
+    | isComplete s
+        = [s]
+    | otherwise
+        = case reduce s of
+            Just s'
+                | s == s'
+                    -> solve (fill s c) ++ solve (erase s c)
+                | otherwise
+                    -> solve s'
+                where c = head (filter (possible s !) cs)
+            Nothing
+                -> []
 
 isComplete :: Sudoku -> Bool
-isComplete (Sudoku det _) = and [ isJust (det ! v ! (i, j)) | v <- views , i <- untilN , j <- untilN ]
+isComplete s = and [ isJust (definite s ! (v, i, j)) | v <- vs , i <- is , j <- is ]
 
-simplify :: Sudoku -> Maybe Sudoku
-simplify s0 = foldl aux (Just s0) [ (v, i, j) | v <- views , i <- untilN , j <- untilN ] where
-    aux (Just s @ (Sudoku det poss)) (v, i, j)
-        | isJust $ det ! v ! (i, j)
+reduce :: Sudoku -> Maybe Sudoku
+reduce s0 = foldl aux (Just s0) [ (v, i, j) | v <- vs , i <- is , j <- is ] where
+    aux (Just s) (v, i, j)
+        | isJust (definite s ! (v, i, j))
             = Just s
-        | null ks
-            = Nothing
-        | length ks == 1
-            = Just $ fill s (toCoord v (i, j, head ks))
         | otherwise
-            = Just s
-        where ks = [ k | k <- untilN , poss ! toCoord v (i, j, k) ]
+            = case [ k | k <- is , possible s ! toC v (i, j, k) ] of
+                []  -> Nothing
+                [k] -> Just (fill s (toC v (i, j, k)))
+                _   -> Just s
     aux Nothing _
         = Nothing
 
-main :: IO ()
-main = interact (aux . solve . toSudoku) where
-    aux sudokus
-        = "found " ++ show (length sudokus) ++ " answers\n"
-        ++ concatMap (("\n" ++) . show) sudokus
+fill :: Sudoku -> C -> Sudoku
+fill s c = s
+    { definite = definite s // [ ((v, i, j), Just k) | v <- vs , let (i, j, k) = fromC v c ]
+    , possible = possible s // [ (toC v (i, j, k'), False) | v <- vs , let (i, j, _) = fromC v c , k' <- is ]
+    }
+
+erase :: Sudoku -> C -> Sudoku
+erase s c = s { possible = possible s // [ (c, False) ] }
+
+toC :: V -> (I, I, I) -> C
+toC GRD (i, j, k) = i * n * n + j * n + k
+toC ROW (i, j, k) = j * n * n + k * n + i
+toC COL (i, j, k) = k * n * n + j * n + i
+toC BOX (i, j, k) = (j `div` m * m + k `div` m) * n * n + (j `mod` m * m + k `mod` m) * n + i
+
+fromC :: V -> C -> (I, I, I)
+fromC v c = case v of
+    GRD -> (i, j, k)
+    ROW -> (k, i, j)
+    COL -> (k, j, i)
+    BOX -> (k, i `div` m * m + j `div` m, i `mod` m * m + j `mod` m)
+    where
+        i = c `div` n `div` n
+        j = c `div` n `mod` n
+        k = c `mod` n
