@@ -25,6 +25,7 @@ is :: [I]
 is = [0 .. n - 1]
 
 type C = Int
+
 cs :: [C]
 cs = [0 .. n * n * n - 1]
 
