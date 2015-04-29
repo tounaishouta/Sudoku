@@ -1,11 +1,7 @@
-module Sudoku where
-
-import Control.Applicative ((<$>))
-import Control.Monad
-import Data.Array.Unboxed  (Array, UArray, array, range, (!), (//))
-import Data.Ix             (Ix)
-import Data.Maybe          (isJust)
-import Data.List           (elemIndex, intercalate)
+import Control.Monad      (foldM)
+import Data.Array.Unboxed (Ix, Array, UArray, array, range, (!), (//))
+import Data.Maybe         (isJust)
+import Data.List          (elemIndex, intercalate)
 
 main :: IO ()
 main = interact (intercalate "\n" . map show . solve . read)
@@ -14,8 +10,6 @@ data Sudoku = Sudoku
     { definite :: Array (V, I, I) (Maybe I)
     , possible :: UArray (I, I, I) Bool
     } deriving (Eq)
-
-data V = GRD | ROW | COL | BOX deriving (Bounded, Ix, Eq, Ord)
 
 m :: Int
 m = 3
@@ -28,6 +22,11 @@ newtype I = I { unI :: Int } deriving (Ix, Eq, Ord)
 instance Bounded I where
     minBound = I 0
     maxBound = I (n - 1)
+
+data V = GRD | ROW | COL | BOX deriving (Bounded, Ix, Eq, Ord)
+
+whole :: (Bounded a, Ix a) => [a]
+whole = range (minBound, maxBound)
 
 fromGRD :: (I, I, I) -> [(V, I, I, I)]
 fromGRD (i, j, k) =
@@ -47,9 +46,6 @@ toGRD (BOX, k, p, q) = (i, j, k) where
     i = I (unI p `div` m * m + unI q `div` m)
     j = I (unI p `mod` m * m + unI q `mod` m)
 
-whole :: (Bounded a, Ix a) => [a]
-whole = range (minBound, maxBound)
-
 empty :: Sudoku
 empty = Sudoku { definite = d , possible = p } where
     d = constArray Nothing
@@ -60,9 +56,14 @@ isCompleted :: Sudoku -> Bool
 isCompleted s = and [ isJust (definite s ! vij) | vij <- whole ]
 
 fill :: Sudoku -> (I, I, I) -> Sudoku
-fill s g = s { definite = d , possible = p } where
-    d = definite s // [ ((v, i, j), Just k) | (v, i, j, k) <- fromGRD g ]
-    p = possible s // [ (toGRD (v, i, j, k), False) | (v, i, j, _) <- fromGRD g , k <- whole ]
+fill s g
+    | possible s ! g
+        = s { definite = d , possible = p }
+    | otherwise
+        = error "can not fill here"
+    where
+        d = definite s // [ ((v, i, j), Just k) | (v, i, j, k) <- fromGRD g ]
+        p = possible s // [ (toGRD (v, i, j, k), False) | (v, i, j, _) <- fromGRD g , k <- whole ]
 
 erase :: Sudoku -> (I, I, I) -> Sudoku
 erase s g = s { possible = p } where
@@ -94,16 +95,15 @@ solve s
             Nothing
                 -> []
 
-chars :: String -- [Char]
+chars :: [Char]
 chars = ['1' .. '9']
 
 instance Read Sudoku where
-    readsPrec _ input = [(s0, unlines (drop n lns))] where
+    readsPrec _ input = [(s0, "")] where
         s0 = foldl aux empty (whole :: [(I, I)])
-        aux s (i, j) = case I <$> elemIndex (lns !! unI i !! unI j) chars of
-            Just k  -> fill s (i, j, k)
+        aux s (i, j) = case elemIndex (lines input !! unI i !! unI j) chars of
+            Just _k -> fill s (i, j, I _k)
             Nothing -> s
-        lns = lines input
 
 instance Show Sudoku where
     show s = unlines [ [ toChar (definite s ! (GRD, i, j)) | j <- whole ] | i <- whole ] where
