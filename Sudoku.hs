@@ -1,5 +1,6 @@
 import Control.Monad      (foldM)
-import Data.Array.Unboxed (Ix, Array, UArray, array, elems, range, (!), (//))
+import Data.Array.Unboxed (Array, UArray, array, elems, (!), (//))
+import Data.Ix            (Ix, range)
 import Data.Maybe         (isJust)
 import Data.List          (elemIndex, intercalate)
 
@@ -99,8 +100,7 @@ chars :: [Char]
 chars = ['1' .. '9']
 
 readBoard :: String -> Board
-readBoard input = s0 where
-    s0 = foldl aux empty whole
+readBoard input = foldl aux empty whole where
     aux s (i, j) = case elemIndex (lines input !! unI i !! unI j) chars of
         Just _k -> fill s (i, j, I _k)
         Nothing -> s
