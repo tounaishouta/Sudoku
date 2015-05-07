@@ -1,12 +1,12 @@
 import Control.Monad      (foldM)
-import Data.Array.Unboxed (Ix, Array, UArray, array, range, (!), (//))
+import Data.Array.Unboxed (Ix, Array, UArray, array, elems, range, (!), (//))
 import Data.Maybe         (isJust)
 import Data.List          (elemIndex, intercalate)
 
 main :: IO ()
-main = interact (intercalate "\n" . map show . solve . read)
+main = interact (intercalate "\n" . map showBoard . solve . readBoard)
 
-data Sudoku = Sudoku
+data Board = Board
     { definite :: Array (V, I, I) (Maybe I)
     , possible :: UArray (I, I, I) Bool
     } deriving (Eq)
@@ -35,52 +35,52 @@ fromGRD (i, j, k) =
     , (COL, k, j, i)
     , (BOX, k, p, q)
     ] where
-        p = I (unI i `div` m * m + unI j `div` m)
-        q = I (unI i `mod` m * m + unI j `mod` m)
+        p = I $ unI i `div` m * m + unI j `div` m
+        q = I $ unI i `mod` m * m + unI j `mod` m
 
 toGRD :: (V, I, I, I) -> (I, I, I)
 toGRD (GRD, i, j, k) = (i, j, k)
 toGRD (ROW, k, i, j) = (i, j, k)
 toGRD (COL, k, j, i) = (i, j, k)
 toGRD (BOX, k, p, q) = (i, j, k) where
-    i = I (unI p `div` m * m + unI q `div` m)
-    j = I (unI p `mod` m * m + unI q `mod` m)
+    i = I $ unI p `div` m * m + unI q `div` m
+    j = I $ unI p `mod` m * m + unI q `mod` m
 
-empty :: Sudoku
-empty = Sudoku { definite = d , possible = p } where
-    d = constArray Nothing
-    p = constArray True
+empty :: Board
+empty = Board { definite = constArray Nothing , possible = constArray True } where
     constArray y = array (minBound, maxBound) [ (x, y) | x <- whole ]
 
-isCompleted :: Sudoku -> Bool
-isCompleted s = and [ isJust (definite s ! vij) | vij <- whole ]
+isCompleted :: Board -> Bool
+isCompleted = all isJust . elems . definite
 
-fill :: Sudoku -> (I, I, I) -> Sudoku
-fill s g
-    | possible s ! g
+fill :: Board -> (I, I, I) -> Board
+fill s c
+    | possible s ! c
         = s { definite = d , possible = p }
     | otherwise
         = error "can not fill here"
     where
-        d = definite s // [ ((v, i, j), Just k) | (v, i, j, k) <- fromGRD g ]
-        p = possible s // [ (toGRD (v, i, j, k), False) | (v, i, j, _) <- fromGRD g , k <- whole ]
+        d = definite s // [ ((v, i, j), Just k) | (v, i, j, k) <- fromGRD c ]
+        p = possible s // [ (toGRD (v, i, j, k), False) | (v, i, j, _) <- fromGRD c , k <- whole ]
 
-erase :: Sudoku -> (I, I, I) -> Sudoku
-erase s g = s { possible = p } where
-    p = possible s // [(g, False)]
+erase :: Board -> (I, I, I) -> Board
+erase s c = s { possible = p } where
+    p = possible s // [(c, False)]
 
-reduce :: Sudoku -> Maybe Sudoku
-reduce s0 = foldM aux s0 (whole :: [(V, I, I)]) where
-    aux s vij @ (v, i, j)
-        | isJust (definite s ! vij)
-            = Just s
-        | otherwise
-            = case [ k | k <- whole , possible s ! toGRD (v, i, j, k) ] of
-                []  -> Nothing
-                [k] -> Just (fill s (toGRD (v, i, j, k)))
-                _   -> Just s
+reduce :: Board -> Maybe Board
+reduce s = foldM check s whole
 
-solve :: Sudoku -> [Sudoku]
+check :: Board -> (V, I, I) -> Maybe Board
+check s vij @ (v, i, j)
+    | isJust (definite s ! vij)
+        = Just s
+    | otherwise
+        = case filter (possible s !) [ toGRD (v, i, j, k) | k <- whole ] of
+            []  -> Nothing
+            [c] -> Just $ fill s c
+            _   -> Just s
+
+solve :: Board -> [Board]
 solve s
     | isCompleted s
         = [s]
@@ -88,24 +88,24 @@ solve s
         = case reduce s of
             Just s'
                 | s == s'
-                    -> solve (fill s g0) ++ solve (erase s g0)
+                    -> solve (fill s c) ++ solve (erase s c)
                 | otherwise
                     -> solve s'
-                where g0 = head [ g | g <- whole , possible s ! g ]
+                where c = head $ filter (possible s !) whole
             Nothing
                 -> []
 
 chars :: [Char]
 chars = ['1' .. '9']
 
-instance Read Sudoku where
-    readsPrec _ input = [(s0, "")] where
-        s0 = foldl aux empty (whole :: [(I, I)])
-        aux s (i, j) = case elemIndex (lines input !! unI i !! unI j) chars of
-            Just _k -> fill s (i, j, I _k)
-            Nothing -> s
+readBoard :: String -> Board
+readBoard input = s0 where
+    s0 = foldl aux empty whole
+    aux s (i, j) = case elemIndex (lines input !! unI i !! unI j) chars of
+        Just _k -> fill s (i, j, I _k)
+        Nothing -> s
 
-instance Show Sudoku where
-    show s = unlines [ [ toChar (definite s ! (GRD, i, j)) | j <- whole ] | i <- whole ] where
-        toChar (Just k) = chars !! unI k
-        toChar Nothing  = '.'
+showBoard :: Board -> String
+showBoard s = unlines [ [ toChar (definite s ! (GRD, i, j)) | j <- whole ] | i <- whole ] where
+    toChar (Just k) = chars !! unI k
+    toChar Nothing  = '.'
