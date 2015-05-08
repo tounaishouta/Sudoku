@@ -21,13 +21,13 @@ instance Bounded I where
 
 data V = GRD | ROW | COL | BOX deriving (Bounded, Eq, Ix, Ord)
 
+whole :: (Bounded a, Ix a) => [a]
+whole = range (minBound, maxBound)
+
 data Board = Board
     { definite :: Array (V, I, I) (Maybe I)
     , possible :: UArray (I, I, I) Bool
     } deriving (Eq)
-
-whole :: (Bounded a, Ix a) => [a]
-whole = range (minBound, maxBound)
 
 solve :: Board -> [Board]
 solve s
@@ -55,7 +55,7 @@ check s vij
     | isJust $ definite s ! vij
         = Just s
     | otherwise
-        = case filter (possible s !) [ toI3 (vij, k) | k <- whole ] of
+        = case filter (possible s !) [ toI3 vij k | k <- whole ] of
             []    -> Nothing
             [ijk] -> Just $ fill s ijk
             _     -> Just s
@@ -68,31 +68,26 @@ fill s ijk
         = error "can not fill here"
     where
         d = definite s // [ (vij, Just k) | (vij, k) <- fromI3 ijk ]
-        p = possible s // [ (toI3 (vij, k), False) | (vij, _) <- fromI3 ijk , k <- whole ]
+        p = possible s // [ (toI3 vij k, False) | (vij, _) <- fromI3 ijk , k <- whole ]
 
 erase :: Board -> (I, I, I) -> Board
 erase s ijk = s { possible = possible s // [(ijk, False)] }
 
 fromI3 :: (I, I, I) -> [((V, I, I), I)]
-fromI3 (i, j, k) =
-    [ ((GRD, i, j), k)
-    , ((ROW, k, i), j)
-    , ((COL, k, j), i)
-    , ((BOX, k, p), q)
-    ] where
+fromI3 (i, j, k) = [((GRD, i, j), k), ((ROW, k, i), j), ((COL, k, j), i), ((BOX, k, p), q)] where
         p = I $ unI i `div` m * m + unI j `div` m
         q = I $ unI i `mod` m * m + unI j `mod` m
 
-toI3 :: ((V, I, I), I) -> (I, I, I)
-toI3 ((GRD, i, j), k) = (i, j, k)
-toI3 ((ROW, k, i), j) = (i, j, k)
-toI3 ((COL, k, j), i) = (i, j, k)
-toI3 ((BOX, k, p), q) = (i, j, k) where
+toI3 :: (V, I, I) -> I -> (I, I, I)
+toI3 (GRD, i, j) k = (i, j, k)
+toI3 (ROW, k, i) j = (i, j, k)
+toI3 (COL, k, j) i = (i, j, k)
+toI3 (BOX, k, p) q = (i, j, k) where
     i = I $ unI p `div` m * m + unI q `div` m
     j = I $ unI p `mod` m * m + unI q `mod` m
 
 showBoard :: Board -> String
-showBoard s = unlines [ [ maybe '.' showI (definite s ! (GRD, i, j)) | j <- whole ] | i <- whole ]
+showBoard s = unlines [ [ maybe '.' showI $ definite s ! (GRD, i, j) | j <- whole ] | i <- whole ]
 
 readBoard :: String -> Board
 readBoard str = foldl aux empty whole where
@@ -106,4 +101,4 @@ showI :: I -> Char
 showI = (['1' .. '9'] !!) . unI
 
 readI :: Char -> Maybe I
-readI = flip lookup [ (showI i, i) | i <- whole ]
+readI c = lookup c [ (showI i, i) | i <- whole ]
