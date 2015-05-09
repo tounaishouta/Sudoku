@@ -1,8 +1,7 @@
-import Control.Monad      (foldM)
-import Data.Array.Unboxed (Array, UArray, array, elems, (!), (//))
-import Data.Ix            (Ix, range)
-import Data.List          (intercalate)
-import Data.Maybe         (isJust)
+import Control.Monad (foldM)
+import Data.Array    (Array, accum, array, (!), (//))
+import Data.Ix       (Ix, range)
+import Data.List     (intercalate, delete)
 
 main :: IO ()
 main = interact $ intercalate "\n" . map showBoard . solve . readBoard
@@ -26,75 +25,71 @@ whole = range (minBound, maxBound)
 
 data Board = Board
     { definite :: Array (V, I, I) (Maybe I)
-    , possible :: UArray (I, I, I) Bool
-    } deriving (Eq)
+    , possible :: Array (V, I, I) [I]
+    , progress :: Int
+    }
 
 solve :: Board -> [Board]
-solve s
-    | isComplete s
-        = [s]
+solve b
+    | isComplete b
+        = [b]
     | otherwise
-        = case reduce s of
-            Just s'
-                | s == s'
-                    -> solve (fill s ijk) ++ solve (erase s ijk)
+        = case reduce b of
+            Nothing -> []
+            Just b'
+                | progress b < progress b'
+                    -> solve b'
                 | otherwise
-                    -> solve s'
-                where ijk = head $ filter (possible s !) whole
-            Nothing
-                -> []
+                    -> solve (set b vijk) ++ solve (unset b vijk)
+                where vijk = head [ (vij, k) | vij <- whole , k <- possible b ! vij ]
 
 isComplete :: Board -> Bool
-isComplete = all isJust . elems . definite
+isComplete b = progress b == n * n
 
 reduce :: Board -> Maybe Board
-reduce s = foldM check s whole
+reduce b = foldM check b whole
 
 check :: Board -> (V, I, I) -> Maybe Board
-check s vij
-    | isJust $ definite s ! vij
-        = Just s
-    | otherwise
-        = case filter (possible s !) [ toI3 vij k | k <- whole ] of
-            []    -> Nothing
-            [ijk] -> Just $ fill s ijk
-            _     -> Just s
+check b vij = case (definite b ! vij, possible b ! vij) of
+    (Nothing, [])  -> Nothing
+    (Nothing, [k]) -> Just $ set b (vij, k)
+    _              -> Just b
 
-fill :: Board -> (I, I, I) -> Board
-fill s ijk
-    | possible s ! ijk
-        = s { definite = d , possible = p }
-    | otherwise
-        = error "can not fill here"
-    where
-        d = definite s // [ (vij, Just k) | (vij, k) <- fromI3 ijk ]
-        p = possible s // [ (toI3 vij k, False) | (vij, _) <- fromI3 ijk , k <- whole ]
+set :: Board -> ((V, I, I), I) -> Board
+set b vijk = b
+    { definite = definite b // [ (vij, Just k) | (vij, k) <- convert vijk ]
+    , possible = accum (flip delete) (possible b) diff
+    , progress = progress b + 1
+    } where
+        diff = concat [ convert (vij, k) | (vij, _) <- convert vijk , k <- possible b ! vij ]
 
-erase :: Board -> (I, I, I) -> Board
-erase s ijk = s { possible = possible s // [(ijk, False)] }
+unset :: Board -> ((V, I, I), I) -> Board
+unset b vijk = b { possible = accum (flip delete) (possible b) (convert vijk) }
 
-fromI3 :: (I, I, I) -> [((V, I, I), I)]
-fromI3 (i, j, k) = [((GRD, i, j), k), ((ROW, k, i), j), ((COL, k, j), i), ((BOX, k, p), q)] where
+convert :: ((V, I, I) , I) -> [((V, I, I), I)]
+convert ((GRD, i, j), k) =
+    [ ((GRD, i, j), k)
+    , ((ROW, k, i), j)
+    , ((COL, k, j), i)
+    , ((BOX, k, p), q)
+    ] where
         p = I $ unI i `div` m * m + unI j `div` m
         q = I $ unI i `mod` m * m + unI j `mod` m
-
-toI3 :: (V, I, I) -> I -> (I, I, I)
-toI3 (GRD, i, j) k = (i, j, k)
-toI3 (ROW, k, i) j = (i, j, k)
-toI3 (COL, k, j) i = (i, j, k)
-toI3 (BOX, k, p) q = (i, j, k) where
+convert ((ROW, k, i), j) = convert ((GRD, i, j), k)
+convert ((COL, k, j), i) = convert ((GRD, i, j), k)
+convert ((BOX, k, p), q) = convert ((GRD, i, j), k) where
     i = I $ unI p `div` m * m + unI q `div` m
     j = I $ unI p `mod` m * m + unI q `mod` m
 
 showBoard :: Board -> String
-showBoard s = unlines [ [ maybe '.' showI $ definite s ! (GRD, i, j) | j <- whole ] | i <- whole ]
+showBoard b = unlines [ [ maybe '.' showI $ definite b ! (GRD, i, j) | j <- whole ] | i <- whole ]
 
 readBoard :: String -> Board
-readBoard str = foldl aux empty whole where
-    aux s (i, j) = case readI $ lines str !! unI i !! unI j of
-        Just k  -> fill s (i, j, k)
-        Nothing -> s
-    empty = Board { definite = constArray Nothing , possible = constArray True }
+readBoard s = foldl aux empty whole where
+    aux b (i, j) = case readI $ lines s !! unI i !! unI j of
+        Nothing -> b
+        Just k  -> set b ((GRD, i, j), k)
+    empty = Board { definite = constArray Nothing , possible = constArray whole , progress = 0 }
     constArray y = array (minBound, maxBound) [ (x, y) | x <- whole ]
 
 showI :: I -> Char
