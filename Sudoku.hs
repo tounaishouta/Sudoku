@@ -1,5 +1,5 @@
 import Control.Monad (foldM)
-import Data.Array    (Array, accum, array, (!))
+import Data.Array    (Array, accum, accumArray, (!))
 import Data.Ix       (Ix, range)
 import Data.List     (delete, intercalate)
 
@@ -12,15 +12,15 @@ m = 3
 n :: Int
 n = m * m
 
-newtype I = I { unI :: Int } deriving (Eq, Ix, Ord)
+newtype I = I { unI :: Int } deriving (Eq, Ord, Ix)
 
 instance Bounded I where
     minBound = I 0
     maxBound = I (n - 1)
 
-data V = GRD | ROW | COL | BOX deriving (Bounded, Eq, Ix, Ord)
+data V = GRD | ROW | COL | BOX deriving (Eq, Ord, Ix, Bounded)
 
-whole :: (Bounded a, Ix a) => [a]
+whole :: (Ix a, Bounded a) => [a]
 whole = range (minBound, maxBound)
 
 type Board = (Array (V, I, I) (Either [I] I), Int)
@@ -32,7 +32,7 @@ undetermined :: Board -> Int
 undetermined = snd
 
 empty :: Board
-empty = (array (minBound, maxBound) [ (vij, Left whole) | vij <- whole], n * n)
+empty = (accumArray const (Left whole) (minBound, maxBound) [], n * n)
 
 solve :: Board -> [Board]
 solve b
@@ -58,11 +58,10 @@ check b vij = case state b vij of
     _        -> Just b
 
 set :: Board -> ((V, I, I), I) -> Board
-set b @ (s, u) vijk = (s', u - 1) where
-    s'     = accum fix (accum remove s vijk's) (convert vijk)
+set b @ (s, u) vijk = (accum fix (accum remove s vijk's) (convert vijk) , u - 1) where
     vijk's = do
         (vij, k) <- convert vijk
-        k'       <- filter (/= k) . fromLeft $ state b vij
+        k'       <- filter (/= k) $ fromLeft $ state b vij
         convert (vij, k')
 
 fix :: Either [I] I -> I -> Either [I] I
@@ -108,4 +107,4 @@ isLeft :: Either a b -> Bool
 isLeft = either (const True) (const False)
 
 fromLeft :: Either a b -> a
-fromLeft = either id (error "fromLeft")
+fromLeft = either id (error "fromLeft: Right-value")
