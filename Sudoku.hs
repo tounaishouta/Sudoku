@@ -1,5 +1,3 @@
-module Main where
-
 import Control.Monad (foldM)
 import Data.Array    (Array, accum, array, (!))
 import Data.Ix       (Ix, range)
@@ -25,51 +23,55 @@ data V = GRD | ROW | COL | BOX deriving (Bounded, Eq, Ix, Ord)
 whole :: (Bounded a, Ix a) => [a]
 whole = range (minBound, maxBound)
 
-data State = Definite I | Indefinite [I]
+type Board = (Array (V, I, I) (Either [I] I), Int)
 
-type Board = Array (V, I, I) State
+state :: Board -> (V, I, I) -> Either [I] I
+state = (!) . fst
+
+undetermined :: Board -> Int
+undetermined = snd
+
+empty :: Board
+empty = (array (minBound, maxBound) [ (vij, Left whole) | vij <- whole], n * n)
 
 solve :: Board -> [Board]
 solve b
-    | isComplete b
+    | undetermined b == 0
         = [b]
     | otherwise
         = case reduce b of
             Nothing -> []
             Just b'
-                | filled b < filled b'
+                | undetermined b > undetermined b'
                     -> solve b'
                 | otherwise
-                    -> concat [ solve $ set b (vij, k) | k <- possibles b vij ]
-                where vij = head $ filter (not . isDefinite . (b !)) whole
-
-isComplete :: Board -> Bool
-isComplete b = filled b == n * n
-
-filled :: Board -> Int
-filled b = length [ (i, j) | (i, j) <- whole , isDefinite $ b ! (GRD, i, j) ]
-
-isDefinite :: State -> Bool
-isDefinite (Definite   _) = True
-isDefinite (Indefinite _) = False
+                    -> concat [ solve $ set b (vij, k) | k <- fromLeft $ state b vij ]
+                where vij = head $ filter (isLeft . state b) whole
 
 reduce :: Board -> Maybe Board
 reduce b = foldM check b whole
 
 check :: Board -> (V, I, I) -> Maybe Board
-check b vij = case b ! vij of
-    Indefinite []  -> Nothing
-    Indefinite [k] -> Just $ set b (vij, k)
-    _              -> Just b
+check b vij = case state b vij of
+    Left []  -> Nothing
+    Left [k] -> Just $ set b (vij, k)
+    _        -> Just b
 
 set :: Board -> ((V, I, I), I) -> Board
-set b vijk = accum determine (accum remove b diff) (convert vijk) where
-    diff = concat [ convert (vij, k') | (vij, k) <- convert vijk , k' <- possibles b vij , k /= k' ]
+set b @ (s, u) vijk = (s', u - 1) where
+    s'     = accum fix (accum remove s vijk's) (convert vijk)
+    vijk's = do
+        (vij, k) <- convert vijk
+        k'       <- filter (/= k) . fromLeft $ state b vij
+        convert (vij, k')
 
-possibles :: Board -> (V, I, I) -> [I]
-possibles b vij = case b ! vij of
-    Definite    _ -> error "possibles: already definite"
-    Indefinite ks -> ks
+fix :: Either [I] I -> I -> Either [I] I
+fix (Left ks) k = if k `elem` ks then Right k else error "fix: impossible choice"
+fix (Right _) _ = error "fix: already fixed"
+
+remove :: Either [I] I -> I -> Either [I] I
+remove (Left ks) k = Left $ delete k ks
+remove (Right _) _ = error "remove: already fixed"
 
 convert :: ((V, I, I), I) -> [((V, I, I), I)]
 convert ((GRD, i, j), k) =
@@ -80,41 +82,30 @@ convert ((GRD, i, j), k) =
     ] where
         p = I $ unI i `div` m * m + unI j `div` m
         q = I $ unI i `mod` m * m + unI j `mod` m
-
 convert ((ROW, k, i), j) = convert ((GRD, i, j), k)
 convert ((COL, k, j), i) = convert ((GRD, i, j), k)
 convert ((BOX, k, p), q) = convert ((GRD, i, j), k) where
     i = I $ unI p `div` m * m + unI q `div` m
     j = I $ unI p `mod` m * m + unI q `mod` m
 
-determine :: State -> I -> State
-determine (Indefinite ks) k
-    | k `elem` ks
-        = Definite k
-    | otherwise
-        = error "determine: impossible choice"
-determine (Definite _) _
-    = error "determine: already definite"
-
-remove :: State -> I -> State
-remove (Indefinite ks) k = Indefinite $ delete k ks
-remove (Definite    _) _ = error "remove: already definite"
-
 showBoard :: Board -> String
 showBoard b = unlines [ [ aux i j | j <- whole ] | i <- whole ] where
-    aux i j = case b ! (GRD, i, j) of
-        Definite   k -> showI k
-        Indefinite _ -> '.'
+    aux i j = either (const '.') showI $ state b (GRD, i, j)
+
+showI :: I -> Char
+showI = (['1' .. '9'] !!) . unI
 
 readBoard :: String -> Board
 readBoard s = foldl aux empty whole where
     aux b (i, j) = case readI $ lines s !! unI i !! unI j of
         Nothing -> b
         Just k  -> set b ((GRD, i, j), k)
-    empty = array (minBound, maxBound) [ (vij, Indefinite whole) | vij <- whole ]
-
-showI :: I -> Char
-showI = (['1' .. '9'] !!) . unI
 
 readI :: Char -> Maybe I
 readI c = lookup c [ (showI i, i) | i <- whole ]
+
+isLeft :: Either a b -> Bool
+isLeft = either (const True) (const False)
+
+fromLeft :: Either a b -> a
+fromLeft = either id (error "fromLeft")
