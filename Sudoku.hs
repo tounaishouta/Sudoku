@@ -1,110 +1,118 @@
-import Control.Monad (foldM)
-import Data.Array    (Array, accum, accumArray, (!))
-import Data.Ix       (Ix, range)
-import Data.List     (delete, intercalate)
+import Control.Monad      (MonadPlus, foldM, mzero, msum)
+import Data.Array.Unboxed (Array, UArray, accum, accumArray, array, listArray, range, (!), (//))
+import Data.List          (delete, intercalate, nub)
 
 main :: IO ()
-main = interact $ intercalate "\n" . map showBoard . solve . readBoard
+main = interact $ intercalate "\n" . map showGrid . solve . concat . lines
 
-m :: Int
-m = 3
+type Digit = Char
 
-n :: Int
-n = m * m
+digits :: [Digit]
+digits = "123456789"
 
-newtype I = I { unI :: Int } deriving (Eq, Ord, Ix)
+boundsOfDigit :: (Digit, Digit)
+boundsOfDigit = (minimum digits, maximum digits)
 
-instance Bounded I where
-    minBound = I 0
-    maxBound = I (n - 1)
+type Coord = (Digit, Digit, Digit)
 
-data V = GRD | ROW | COL | BOX deriving (Eq, Ord, Ix, Bounded)
+boundsOfCoord :: (Coord, Coord)
+boundsOfCoord = ((dMin, dMin, dMin), (dMax, dMax, dMax)) where
+    (dMin, dMax) = boundsOfDigit
 
-whole :: (Ix a, Bounded a) => [a]
-whole = range (minBound, maxBound)
+coords :: [Coord]
+coords = range boundsOfCoord
 
-type Board = (Array (V, I, I) (Either [I] I), Int)
+type Unit = [Coord]
 
-state :: Board -> (V, I, I) -> Either [I] I
-state = (!) . fst
+unitList :: [Unit]
+unitList =  grids ++ rows ++ cols ++ boxes where
+    grids = [ [ (d, i, j) | d <- digits ] | i <- digits , j <- digits ]
+    rows  = [ [ (d, i, j) | j <- digits ] | d <- digits , i <- digits ]
+    cols  = [ [ (d, i, j) | i <- digits ] | d <- digits , j <- digits ]
+    boxes = [ [ (d, i, j) | i <- is , j <- js ] | d <- digits , is <- block , js <- block ]
+    block = ["123", "456", "789"]
 
-undetermined :: Board -> Int
-undetermined = snd
+type UID = Int
 
-empty :: Board
-empty = (accumArray const (Left whole) (minBound, maxBound) [], n * n)
+boundsOfUID :: (UID, UID)
+boundsOfUID = (1, length unitList)
 
-solve :: Board -> [Board]
-solve b
-    | undetermined b == 0
-        = [b]
+uids :: [UID]
+uids = range boundsOfUID
+
+unit :: Array UID Unit
+unit = listArray boundsOfUID unitList
+
+containers :: Array Coord [UID]
+containers = accumArray (flip (:)) [] boundsOfCoord [ (c, uid) | uid <- uids , c <- unit ! uid ]
+
+foes :: Array Coord [Coord]
+foes = array boundsOfCoord [ (c, aux c) | c <- coords ] where
+    aux c = delete c $ nub $ concat [ unit ! uid | uid <- containers ! c ]
+
+type Grid = (UArray Coord Bool, UArray UID Int)
+
+admits :: Grid -> Coord -> Bool
+admits = (!) . fst
+
+numOfChoices :: Grid -> UID -> Int
+numOfChoices = (!) . snd
+
+solve :: MonadPlus m => String -> m Grid
+solve = maybe mzero search . readGrid
+
+search :: MonadPlus m => Grid -> m Grid
+search g = case minimumUID g of
+    Nothing  -> return g
+    Just uid -> msum [ maybe mzero search $ assign g c | c <- unit ! uid ]
+
+minimumUID :: Grid -> Maybe UID
+minimumUID g
+    | null xs
+        = Nothing
     | otherwise
-        = case reduce b of
-            Nothing -> []
-            Just b'
-                | undetermined b > undetermined b'
-                    -> solve b'
-                | otherwise
-                    -> concat [ solve $ set b (vij, k) | k <- fromLeft $ state b vij ]
-                where vij = head $ filter (isLeft . state b) whole
+        = Just $ snd $ minimum xs
+    where xs = filter ((> 1) . fst) [ (numOfChoices g uid, uid) | uid <- uids ]
 
-reduce :: Board -> Maybe Board
-reduce b = foldM check b whole
+assign :: Grid -> Coord -> Maybe Grid
+assign g c
+    | g `admits` c
+        = foldM eliminate g $ foes ! c
+    | otherwise
+        = Nothing
 
-check :: Board -> (V, I, I) -> Maybe Board
-check b vij = case state b vij of
-    Left []  -> Nothing
-    Left [k] -> Just $ set b (vij, k)
-    _        -> Just b
+eliminate :: Grid -> Coord -> Maybe Grid
+eliminate g @ (b, n) c
+    | g `admits` c
+        = foldM check (b', n') $ containers ! c
+    | otherwise
+        = Just g
+    where
+        b' = b // [(c, False)]
+        n' = accum (-) n [ (uid, 1) | uid <- containers ! c ]
 
-set :: Board -> ((V, I, I), I) -> Board
-set b @ (s, u) vijk = (accum fix (accum remove s vijk's) (convert vijk) , u - 1) where
-    vijk's = do
-        (vij, k) <- convert vijk
-        k'       <- filter (/= k) $ fromLeft $ state b vij
-        convert (vij, k')
+check :: Grid -> UID -> Maybe Grid
+check g uid = case numOfChoices g uid of
+    0 -> Nothing
+    1 -> assign g c
+    _ -> Just g
+    where c = head $ filter (admits g) $ unit ! uid
 
-fix :: Either [I] I -> I -> Either [I] I
-fix (Left ks) k = if k `elem` ks then Right k else error "fix: impossible choice"
-fix (Right _) _ = error "fix: already fixed"
+showGrid :: Grid -> String
+showGrid g = unlines [ [ aux i j | j <- digits ] | i <- digits ] where
+    aux i j = case [ d | d <- digits , g `admits` (d, i, j) ] of
+        []  -> 'x'
+        [d] -> d
+        _   -> '.'
 
-remove :: Either [I] I -> I -> Either [I] I
-remove (Left ks) k = Left $ delete k ks
-remove (Right _) _ = error "remove: already fixed"
+readGrid :: String -> Maybe Grid
+readGrid s = foldM aux emptyGrid $ zip s [ (i, j) | i <- digits , j <- digits ] where
+    aux g (d, (i, j))
+        | d `elem` digits
+            = assign g (d, i, j)
+        | otherwise
+            = Just g
 
-convert :: ((V, I, I), I) -> [((V, I, I), I)]
-convert ((GRD, i, j), k) =
-    [ ((GRD, i, j), k)
-    , ((ROW, k, i), j)
-    , ((COL, k, j), i)
-    , ((BOX, k, p), q)
-    ] where
-        p = I $ unI i `div` m * m + unI j `div` m
-        q = I $ unI i `mod` m * m + unI j `mod` m
-convert ((ROW, k, i), j) = convert ((GRD, i, j), k)
-convert ((COL, k, j), i) = convert ((GRD, i, j), k)
-convert ((BOX, k, p), q) = convert ((GRD, i, j), k) where
-    i = I $ unI p `div` m * m + unI q `div` m
-    j = I $ unI p `mod` m * m + unI q `mod` m
-
-showBoard :: Board -> String
-showBoard b = unlines [ [ aux i j | j <- whole ] | i <- whole ] where
-    aux i j = either (const '.') showI $ state b (GRD, i, j)
-
-showI :: I -> Char
-showI = (['1' .. '9'] !!) . unI
-
-readBoard :: String -> Board
-readBoard s = foldl aux empty whole where
-    aux b (i, j) = case readI $ lines s !! unI i !! unI j of
-        Nothing -> b
-        Just k  -> set b ((GRD, i, j), k)
-
-readI :: Char -> Maybe I
-readI c = lookup c [ (showI i, i) | i <- whole ]
-
-isLeft :: Either a b -> Bool
-isLeft = either (const True) (const False)
-
-fromLeft :: Either a b -> a
-fromLeft = either id (error "fromLeft: Right-value")
+emptyGrid :: Grid
+emptyGrid = (constArray boundsOfCoord True, constArray boundsOfUID (length digits)) where
+    constArray bds v = array bds [ (k, v) | k <- range bds ]
