@@ -1,10 +1,9 @@
 import Control.Monad
 import Data.Array.Unboxed
 import Data.List
-import Data.Tuple
 
 main :: IO ()
-main = interact $ unlines . map showGrid . lift solve . readGrid . concat . words
+main = interact $ show . length . filter ((== 1) . length . lift solve . readGrid) . lines
 
 type Digit = Char
 
@@ -41,42 +40,44 @@ foes = array cube [ (c, aux c us) | (c, us) <- assocs owners ] where
 
 type Grid = (UArray Coord Bool, UArray Unit Int)
 
+nothing :: Int
+nothing = -1
+
 solve :: MonadPlus m => Grid -> m Grid
 solve g = case minimumUnit g of
     Nothing -> return g
     Just u  -> msum [ lift solve $ assign g c | c <- unit ! u ]
 
 minimumUnit :: Grid -> Maybe Unit
-minimumUnit (_, o) = case map swap $ filter ((/= -1) . snd) $ assocs o of
+minimumUnit (_, o) = case [ (n, u) | (u, n) <- assocs o , n /= nothing ] of
     [] -> Nothing
     xs -> Just $ snd $ minimum xs
 
 assign :: Grid -> Coord -> Maybe Grid
-assign (p, o) c0
-    | p ! c0
+assign (p, o) coord
+    | p ! coord
         = foldM check (p', o') us
     | otherwise
         = mzero
     where
-        cs = [ c | c <- foes ! c0 , p ! c ]
+        cs = [ c | c <- foes ! coord , p ! c ]
+        us = [ u | c <- cs , u <- owners ! c ]
         p' = p // [ (c, False) | c <- cs ]
-        o' = accum (-) o xs // ys
-        xs = [ (u, 1) | c <- cs , u <- owners ! c ]
-        ys = [ (u, -1) | u <- owners ! c0 ]
-        us = concat [ owners ! c | c <- cs ]
+        o' = accum (-) o [ (u, 1) | u <- us ] // [ (u, nothing) | u <- owners ! coord ]
 
 check :: Grid -> Unit -> Maybe Grid
 check g @ (p, o) u = case o ! u of
     0 -> mzero
-    1 -> assign g $ head $ filter (p !) $ unit ! u
+    1 -> assign g coord
     _ -> return g
+    where coord = head [ c | c <- unit ! u , p ! c ]
 
 emptyGrid :: Grid
-emptyGrid = (constArray cube True, constArray (bounds unit) $ length digits) where
+emptyGrid = (constArray cube True, constArray (bounds unit) (length digits)) where
     constArray bds v = array bds [ (k, v) | k <- range bds ]
 
 readGrid :: String -> Maybe Grid
-readGrid = foldM aux emptyGrid . zip ijs . concat . lines where
+readGrid = foldM aux emptyGrid . zip ijs . concat . words where
     ijs = [ (i, j) | i <- digits , j <- digits ]
     aux g ((i, j), d)
         | d `elem` digits
