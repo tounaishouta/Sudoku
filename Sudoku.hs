@@ -3,7 +3,7 @@ import Data.Array.Unboxed
 import Data.List
 
 main :: IO ()
-main = interact $ show . length . filter ((== 1) . length . lift solve . readGrid) . lines
+main = interact $ unlines . map showGrid . lift solve . readGrid
 
 type Digit = Char
 
