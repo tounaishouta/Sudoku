@@ -1,118 +1,94 @@
-import Control.Monad      (MonadPlus, foldM, mzero, msum)
-import Data.Array.Unboxed (Array, UArray, accum, accumArray, array, listArray, range, (!), (//))
-import Data.List          (delete, intercalate, nub)
+import Control.Monad
+import Data.Array.Unboxed
+import Data.List
+import Data.Tuple
 
 main :: IO ()
-main = interact $ intercalate "\n" . map showGrid . solve . concat . lines
+main = interact $ intercalate "\n" . map showGrid . lift solve . readGrid . concat . lines
 
 type Digit = Char
 
 digits :: [Digit]
 digits = "123456789"
 
-boundsOfDigit :: (Digit, Digit)
-boundsOfDigit = (minimum digits, maximum digits)
+blocks :: [[Digit]]
+blocks = ["123", "456", "789"]
 
 type Coord = (Digit, Digit, Digit)
 
-boundsOfCoord :: (Coord, Coord)
-boundsOfCoord = ((dMin, dMin, dMin), (dMax, dMax, dMax)) where
-    (dMin, dMax) = boundsOfDigit
+cube :: (Coord, Coord)
+cube = ((dMin, dMin, dMin), (dMax, dMax, dMax)) where
+    dMin = minimum digits
+    dMax = maximum digits
 
-coords :: [Coord]
-coords = range boundsOfCoord
+type Unit = Int
 
-type Unit = [Coord]
+unit :: Array Unit [Coord]
+unit = listArray (1, length list) list where
+    list    = numbers ++ rows ++ columns ++ boxes
+    numbers = [ triples [i] [j] digits | i <- digits , j <- digits ]
+    rows    = [ triples [i] digits [d] | i <- digits , d <- digits ]
+    columns = [ triples digits [j] [d] | j <- digits , d <- digits ]
+    boxes   = [ triples is js [d] | is <- blocks , js <- blocks , d <- digits ]
+    triples is js ds = [ (i, j, d) | i <- is , j <- js , d <- ds ]
 
-unitList :: [Unit]
-unitList =  grids ++ rows ++ cols ++ boxes where
-    grids = [ [ (d, i, j) | d <- digits ] | i <- digits , j <- digits ]
-    rows  = [ [ (d, i, j) | j <- digits ] | d <- digits , i <- digits ]
-    cols  = [ [ (d, i, j) | i <- digits ] | d <- digits , j <- digits ]
-    boxes = [ [ (d, i, j) | i <- is , j <- js ] | d <- digits , is <- block , js <- block ]
-    block = ["123", "456", "789"]
-
-type UID = Int
-
-boundsOfUID :: (UID, UID)
-boundsOfUID = (1, length unitList)
-
-uids :: [UID]
-uids = range boundsOfUID
-
-unit :: Array UID Unit
-unit = listArray boundsOfUID unitList
-
-containers :: Array Coord [UID]
-containers = accumArray (flip (:)) [] boundsOfCoord [ (c, uid) | uid <- uids , c <- unit ! uid ]
+owners :: Array Coord [Unit]
+owners = accumArray (flip (:)) [] cube [ (c, u) | (u, cs) <- assocs unit , c <- cs ]
 
 foes :: Array Coord [Coord]
-foes = array boundsOfCoord [ (c, aux c) | c <- coords ] where
-    aux c = delete c $ nub $ concat [ unit ! uid | uid <- containers ! c ]
+foes = array cube [ (c, aux c us) | (c, us) <- assocs owners ] where
+    aux c us = delete c $ nub $ concat [ unit ! u | u <- us ]
 
-type Grid = (UArray Coord Bool, UArray UID Int)
+type Grid = (UArray Coord Bool, UArray Unit Int)
 
-admits :: Grid -> Coord -> Bool
-admits = (!) . fst
+solve :: MonadPlus m => Grid -> m Grid
+solve g = case minimumUnit g of
+    Nothing -> return g
+    Just u  -> msum [ lift solve $ assign g c | c <- unit ! u ]
 
-numOfChoices :: Grid -> UID -> Int
-numOfChoices = (!) . snd
-
-solve :: MonadPlus m => String -> m Grid
-solve = maybe mzero search . readGrid
-
-search :: MonadPlus m => Grid -> m Grid
-search g = case minimumUID g of
-    Nothing  -> return g
-    Just uid -> msum [ maybe mzero search $ assign g c | c <- unit ! uid ]
-
-minimumUID :: Grid -> Maybe UID
-minimumUID g
-    | null xs
-        = Nothing
-    | otherwise
-        = Just $ snd $ minimum xs
-    where xs = filter ((> 1) . fst) [ (numOfChoices g uid, uid) | uid <- uids ]
+minimumUnit :: Grid -> Maybe Unit
+minimumUnit (_, o) = case map swap $ filter ((/= -1) . snd) $ assocs o of
+    [] -> Nothing
+    xs -> Just $ snd $ minimum xs
 
 assign :: Grid -> Coord -> Maybe Grid
-assign g c
-    | g `admits` c
-        = foldM eliminate g $ foes ! c
+assign (p, o) c0
+    | p ! c0
+        = foldM check (p', o') us
     | otherwise
-        = Nothing
-
-eliminate :: Grid -> Coord -> Maybe Grid
-eliminate g @ (b, n) c
-    | g `admits` c
-        = foldM check (b', n') $ containers ! c
-    | otherwise
-        = Just g
+        = mzero
     where
-        b' = b // [(c, False)]
-        n' = accum (-) n [ (uid, 1) | uid <- containers ! c ]
+        cs = [ c | c <- foes ! c0 , p ! c ]
+        p' = p // [ (c, False) | c <- cs ]
+        o' = accum (-) o xs // ys
+        xs = [ (u, 1) | c <- cs , u <- owners ! c ]
+        ys = [ (u, -1) | u <- owners ! c0 ]
+        us = concat [ owners ! c | c <- cs ]
 
-check :: Grid -> UID -> Maybe Grid
-check g uid = case numOfChoices g uid of
-    0 -> Nothing
-    1 -> assign g c
-    _ -> Just g
-    where c = head $ filter (admits g) $ unit ! uid
+check :: Grid -> Unit -> Maybe Grid
+check g @ (p, o) u = case o ! u of
+    0 -> mzero
+    1 -> assign g $ head $ filter (p !) $ unit ! u
+    _ -> return g
+
+emptyGrid :: Grid
+emptyGrid = (constArray cube True, constArray (bounds unit) $ length digits) where
+    constArray bds v = array bds [ (k, v) | k <- range bds ]
+
+readGrid :: String -> Maybe Grid
+readGrid = foldM aux emptyGrid . zip ijs . concat . lines where
+    ijs = [ (i, j) | i <- digits , j <- digits ]
+    aux g ((i, j), d)
+        | d `elem` digits
+            = assign g (i, j, d)
+        | otherwise
+            = return g
 
 showGrid :: Grid -> String
-showGrid g = unlines [ [ aux i j | j <- digits ] | i <- digits ] where
-    aux i j = case [ d | d <- digits , g `admits` (d, i, j) ] of
-        []  -> 'x'
+showGrid (p, _) = unlines [ [ aux i j | j <- digits ] | i <- digits ] where
+    aux i j = case [ d | d <- digits , p ! (i, j, d) ] of
         [d] -> d
         _   -> '.'
 
-readGrid :: String -> Maybe Grid
-readGrid s = foldM aux emptyGrid $ zip s [ (i, j) | i <- digits , j <- digits ] where
-    aux g (d, (i, j))
-        | d `elem` digits
-            = assign g (d, i, j)
-        | otherwise
-            = Just g
-
-emptyGrid :: Grid
-emptyGrid = (constArray boundsOfCoord True, constArray boundsOfUID (length digits)) where
-    constArray bds v = array bds [ (k, v) | k <- range bds ]
+lift :: MonadPlus m => (a -> m b) -> Maybe a -> m b
+lift = maybe mzero
