@@ -4,7 +4,7 @@ import Data.List
 import Data.Tuple
 
 main :: IO ()
-main = interact $ unlines . map showGrid . lift solve . readGrid . concat . lines
+main = interact $ unlines . map showGrid . lift solve . readGrid . concat . words
 
 type Digit = Char
 
