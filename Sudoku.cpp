@@ -1,196 +1,182 @@
-using namespace std;
-
 #include <iostream>
 #include <bitset>
 #include <array>
 #include <list>
 #include <set>
 
-#define digit int
-#define coord int
-#define block int
+using namespace std;
 
-#define _box_   3
-#define _digit_ 9   // = _box_ * _box_
-#define _coord_ 729 // = _digit_ * _digit_ * _digit_
-#define _block_ 324 // = 4 * _digit_ * _digit_
+const int SIZE    = 3;
+const int N_DIGIT = SIZE * SIZE;
+const int N_COORD = N_DIGIT * N_DIGIT * N_DIGIT;
+const int N_BLOCK = 4 * N_DIGIT * N_DIGIT;
+const int DEFINED = 0xDEF;
 
-#define GRD 0
-#define ROW 1
-#define COL 2
-#define BOX 3
+inline int to_coord(int i, int j, int d) {
+    return (i * N_DIGIT + j) * N_DIGIT + d;
+}
+inline int to_block(int v, int p, int q) {
+    return (v * N_DIGIT + p) * N_DIGIT + q;
+}
+inline bool is_digit(char c) {
+    return '1' <= c and c <= '9';
+}
+inline int to_digit(char c) {
+    return c - '1';
+}
+inline char to_char(int d) {
+    return '1' + d;
+}
 
-#define DEFINED 999
-#define INFINITY 99
+array<list<int>, N_BLOCK> members;
+array<list<int>, N_COORD> owners;
+array<list<int>, N_COORD> antis;
 
-#define to_coord(i, j, d) (i * _digit_ + j) * _digit_ + d
-#define to_block(v, p, q) (v * _digit_ + p) * _digit_ + q
-
-#define for_digit(d)      for (digit d = 0; d < _digit_; d++)
-#define for_coord(c)      for (coord c = 0; c < _coord_; c++)
-#define for_block(b)      for (block b = 0; b < _block_; b++)
-#define for_each(xs, itx) for (auto itx = xs.begin(); itx != xs.end(); itx++)
-
-class Grid {
-
-    private:
-
-        bitset<_coord_> possible;
-
-        array<int, _block_> options;
-
-    public:
-
-        Grid & clear() {
-            if (is_null()) return null();
-            for_coord(c) possible[c] = true;
-            for_block(b) options[b]  = _digit_;
-            return *this;
+inline void initialize() {
+    for (int i = 0; i < N_DIGIT; i++) {
+        for (int j = 0; j < N_DIGIT; j++) {
+            for (int d = 0; d < N_DIGIT; d++) {
+                int c = to_coord(i, j, d);
+                int p = i / SIZE * SIZE + j / SIZE;
+                members[to_block(0, i, j)].push_back(c);
+                members[to_block(1, i, d)].push_back(c);
+                members[to_block(2, j, d)].push_back(c);
+                members[to_block(3, p, d)].push_back(c);
+            }
         }
+    }
+    for (int b = 0; b < N_BLOCK; b++)
+        for (int c : members[b])
+            owners[c].push_back(b);
+    for (int c = 0; c < N_COORD; c++) {
+        set<int> cs;
+        for (int b : owners[c])
+            for (int cc : members[b])
+                cs.insert(cc);
+        cs.erase(c);
+        for (int cc : cs)
+            antis[c].push_back(cc);
+    }
+}
 
-        Grid() {
-            initialize();
+class no_solution {} NO_SOLUTION;
+
+class grid {
+    private:
+        bitset<N_COORD>     possible;
+        array<int, N_BLOCK> n_option;
+    public:
+        grid() {
             clear();
         }
-
-        Grid & copy(const Grid &s) {
-            if (is_null()) return null();
-            for_coord(c) possible[c] = s.possible[c];
-            for_block(b) options[b]  = s.options[b];
+        grid(const grid & old) {
+            copy(old);
+        }
+        grid & clear() {
+            for (int c = 0; c < N_COORD; c++)
+                possible[c] = true;
+            for (int b = 0; b < N_BLOCK; b++)
+                n_option[b] = N_DIGIT;
             return *this;
         }
-
-        Grid(const Grid &s) {
-            copy(s);
+        grid & copy(const grid & old) {
+            for (int c = 0; c < N_COORD; c++)
+                possible[c] = old.possible[c];
+            for (int b = 0; b < N_BLOCK; b++)
+                n_option[b] = old.n_option[b];
+            return *this;
         }
-
-        Grid & solve() {
-            if (is_null()) return null();
-            int min = INFINITY;
-            block b;
-            for_block(bb) if (options[bb] < min) min = options[b = bb];
-            if (min == INFINITY) return *this;
-            Grid g = *this;
-            for_each(coords[b], itc) if (g.possible[*itc]) {
-                if (!copy(g).assign(*itc).solve().is_null())
-                    return *this;
-            }
-            return null();
-        }
-
-        Grid & read(string s) {
-            if (is_null()) return null();
-            auto itc = s.begin();
-            for_digit(i) for_digit(j) {
-                if (itc == s.end()) return *this;
-                if ('1' <= *itc && *itc <= '9') {
-                    digit d = *itc - '1';
-                    if (assign(to_coord(i, j, d)).is_null()) return null();
+        grid & solve() {
+            int b_min = -1;
+            int min = DEFINED;
+            for (int b = 0; b < N_BLOCK; b++) {
+                if (n_option[b] < min) {
+                    min = n_option[b];
+                    b_min = b;
                 }
-                itc++;
+            }
+            if (min == DEFINED)
+                return *this;
+            grid saved = *this;
+            for (int c : members[b_min]) {
+                if (saved.possible[c]) {
+                    try {
+                        return copy(saved).assign(c).solve();
+                    }
+                    catch (no_solution) {
+                        continue;
+                    }
+                }
+            }
+            throw NO_SOLUTION;
+        }
+        grid & read(istream & in) {
+            char c;
+            for (int i = 0; i < N_DIGIT; i++) {
+                for (int j = 0; j < N_DIGIT; j++) {
+                    in >> c;
+                    if (is_digit(c))
+                        assign(to_coord(i, j, to_digit(c)));
+                }
             }
             return *this;
         }
-
-        Grid & read() {
+        string show() const {
             string s;
-            cin >> s;
-            return read(s);
-        }
-
-        string show() {
-            if (is_null()) return "NULL\n";
-            string s;
-            for_digit(i) {
-                for_digit(j) {
-                    int cnt = 0;
-                    digit d;
-                    for_digit(dd) if (possible[to_coord(i, j, dd)]) { cnt++; d = dd; }
-                    s += cnt == 1 ? '1' + (char)d : '.';
+            for (int i = 0; i < N_DIGIT; i++) {
+                for (int j = 0; j < N_DIGIT; j++) {
+                    int count = 0;
+                    int d_possible = -1;
+                    for (int d = 0; d < N_DIGIT; d++) {
+                        if (possible[to_coord(i, j, d)]) {
+                            count++;
+                            d_possible = d;
+                        }
+                    }
+                    if (count == 1)
+                        s += to_char(d_possible);
+                    else
+                        s+= '.';
                 }
                 s += '\n';
             }
             return s;
         }
-
-        void print() {
-            cout << show() << endl;
-        }
-
-        bool is_null() {
-            return this == NULL;
-        }
-
-        static Grid & null() {
-            Grid *pg = NULL;
-            return *pg;
-        }
-
     private:
-
-        Grid & assign(coord c) {
-            if (is_null() || !possible[c]) return null();
-            list<coord> cs;
-            list<block> bs;
-            for_each(others[c], itc) if (possible[*itc]) {
-                cs.push_back(*itc);
-                for_each(owners[*itc], itb) bs.push_back(*itb);
+        grid & assign(int c) {
+            if (!possible[c])
+                throw NO_SOLUTION;
+            list<int> bs;
+            for (int cc : antis[c]) {
+                if (possible[cc]) {
+                    possible[cc] = false;
+                    for (int b : owners[cc]) {
+                        bs.push_back(b);
+                        n_option[b]--;
+                    }
+                }
             }
-            for_each(cs, itc) possible[*itc] = false;
-            for_each(bs, itb) options[*itb]--;
-            for_each(owners[c], itb) options[*itb] = DEFINED;
-            for_each(bs, itb) if (check(*itb).is_null()) return null();
+            for (int b : owners[c])
+                n_option[b] = DEFINED;
+            for (int b : bs)
+                check(b);
             return *this;
         }
-
-        Grid & check(block b) {
-            if (is_null()) return null();
-            switch (options[b]) {
-                case 0:
-                    return null();
-                case 1:
-                    coord c;
-                    for_each(coords[b], itc) if (possible[*itc]) c = *itc;
-                    return assign(c);
-                default:
-                    return *this;
-            }
+        grid & check(int b) {
+            if (n_option[b] == 0)
+                throw NO_SOLUTION;
+            if (n_option[b] > 1)
+                return *this;
+            int c_possible = -1;
+            for (int c : members[b])
+                if (possible[c])
+                    c_possible = c;
+            return assign(c_possible);
         }
-
-        static array<list<coord>, _block_> coords;
-        static array<list<block>, _coord_> owners;
-        static array<list<coord>, _coord_> others;
-
-        static bool is_initialized;
-
-        static void initialize() {
-            if (is_initialized) return;
-            for_digit(i) for_digit(j) for_digit(d) {
-                coord c = to_coord(i, j, d);
-                digit p = i / _box_ * _box_ + j / _box_;
-                coords[to_block(GRD, i, j)].push_back(c);
-                coords[to_block(ROW, i, d)].push_back(c);
-                coords[to_block(COL, j, d)].push_back(c);
-                coords[to_block(BOX, p, d)].push_back(c);
-            }
-            for_block(b) for_each(coords[b], itc) owners[*itc].push_back(b);
-            for_coord(c) {
-                set<coord> cs;
-                for_each(owners[c], itb) for_each(coords[*itb], itc) cs.insert(*itc);
-                cs.erase(c);
-                for_each(cs, itc) others[c].push_back(*itc);
-            }
-            is_initialized = true;
-        }
-};
-
-array<list<coord>, _block_> Grid::coords;
-array<list<block>, _coord_> Grid::owners;
-array<list<coord>, _coord_> Grid::others;
-
-bool Grid::is_initialized = false;
+} g;
 
 int main() {
-    Grid g;
-    g.read().solve().print();
+    initialize();
+    cout << g.read(cin).solve().show() << endl;
+    return 0;
 }
