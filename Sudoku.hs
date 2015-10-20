@@ -4,8 +4,8 @@ import Data.List
 import Data.Tuple
 
 main :: IO ()
-main = interact $ unlines . map aux . lines where
-    aux string = unlines $ string : map showSudokuOneLine (solve string)
+main = interact $ unlines . map execute . lines where
+    execute string = unlines $ string : map showSudokuOneLine (solve string)
 
 type Sudoku = (UArray Coord Bool, UArray Unit Int)
 
@@ -20,16 +20,14 @@ blocks = ["123", "456", "789"]
 type Coord = Int
 
 boundsCoord :: (Coord, Coord)
-boundsCoord = bounds fromCoord
+boundsCoord = (minimum coords, maximum coords) where
+    coords = elems coord
 
-toCoord :: UArray (Digit, Digit, Digit) Coord
-toCoord = array ((a, a, a), (b, b, b)) $ map swap $ assocs fromCoord where
+coord :: Array (Digit, Digit, Digit) Coord
+coord = array ((a, a, a), (b, b, b)) (zip ijks [1 .. ]) where
+    ijks = [ (i, j, k) | i <- digits, j <- digits, k <- digits ]
     a = minimum digits
     b = maximum digits
-
-fromCoord :: Array Coord (Digit, Digit, Digit)
-fromCoord = listArray (1, length digit3) digit3 where
-    digit3 = [ (i, j, k) | i <- digits, j <- digits, k <- digits ]
 
 type Unit = Int
 
@@ -39,11 +37,11 @@ boundsUnit = bounds children
 children :: Array Unit [Coord]
 children = listArray (1, length units) units where
     units = grids ++ rows ++ cols ++ boxes
-    grids = [ zip' [i] [j] digits | i <- digits, j <- digits ]
-    rows  = [ zip' [i] digits [k] | i <- digits, k <- digits ]
-    cols  = [ zip' digits [j] [k] | j <- digits, k <- digits ]
-    boxes = [ zip' is js [k] | is <- blocks, js <- blocks, k <- digits ]
-    zip' is js ks = [ toCoord ! (i, j, k) | i <- is, j <- js, k <- ks ]
+    grids = [ combine [i] [j] digits | i <- digits, j <- digits ]
+    rows  = [ combine [i] digits [k] | i <- digits, k <- digits ]
+    cols  = [ combine digits [j] [k] | j <- digits, k <- digits ]
+    boxes = [ combine is js [k] | is <- blocks, js <- blocks, k <- digits ]
+    combine is js ks = [ coord ! (i, j, k) | i <- is, j <- js, k <- ks ]
 
 parents :: Array Coord [Unit]
 parents = accumArray add [] boundsCoord [ (c, u) | (u, cs) <- assocs children, c <- cs ] where
@@ -53,22 +51,21 @@ siblings :: Array Coord [Coord]
 siblings = array boundsCoord [ (c, delete c $ nub $ concatMap (children !) us) | (c, us) <- assocs parents ]
 
 defined :: Int
-defined = 999
+defined = maxBound
 
 solve :: MonadPlus m => String -> m Sudoku
 solve string = solveRec =<< foldM assign emptySudoku cs where
     ijs = [ (i, j) | i <- digits, j <- digits ]
     ks  = concat $ words string
-    cs  = [ toCoord ! (i, j, k) | ((i, j), k) <- zip ijs ks, k `elem` digits ]
+    cs  = [ coord ! (i, j, k) | ((i, j), k) <- zip ijs ks, k `elem` digits ]
 
 solveRec :: MonadPlus m => Sudoku -> m Sudoku
 solveRec s @ (a, o)
-    | all (== defined) $ elems o
+    | n == defined
         = return s
     | otherwise
         = msum [ solveRec =<< assign s c | c <- children ! u, a ! c ]
-    where
-        (_, u) = minimum $ map swap $ assocs o
+    where (n, u) = minimum $ map swap $ assocs o
 
 assign :: MonadPlus m => Sudoku -> Coord -> m Sudoku
 assign (a, o) c
@@ -79,7 +76,7 @@ assign (a, o) c
     where
         a' = a // zip' cs False
         o' = accum (-) o (zip' us 1) // zip' (parents ! c) defined
-        cs = filter (a !) $ siblings ! c
+        cs = filter (a !) (siblings ! c)
         us = concatMap (parents !) cs
         zip' xs y = zip xs (repeat y)
 
@@ -96,8 +93,8 @@ emptySudoku = (a, o) where
     o = accumArray const (length digits) boundsUnit []
 
 showSudoku :: Sudoku -> String
-showSudoku (a, _) = unlines [ [ aux i j | j <- digits ] | i <- digits ] where
-    aux i j = case [ k | k <- digits, a ! (toCoord ! (i, j, k)) ] of
+showSudoku (a, _) = unlines [ [ toChar i j | j <- digits ] | i <- digits ] where
+    toChar i j = case [ k | k <- digits, a ! (coord ! (i, j, k)) ] of
         [k] -> k
         _   -> '.'
 
