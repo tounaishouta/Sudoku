@@ -4,8 +4,7 @@ import Data.List
 import Data.Tuple
 
 main :: IO ()
-main = interact $ unlines . map execute . lines where
-    execute string = unlines $ string : map showSudokuOneLine (solve string)
+main = interact $ unlines . map (maybe "no solution" showSudoku . solve) . lines
 
 type Sudoku = (UArray Coord Bool, UArray Unit Int)
 
@@ -44,11 +43,13 @@ children = listArray (1, length units) units where
     combine is js ks = [ coord ! (i, j, k) | i <- is, j <- js, k <- ks ]
 
 parents :: Array Coord [Unit]
-parents = accumArray add [] boundsCoord [ (c, u) | (u, cs) <- assocs children, c <- cs ] where
+parents = accumArray add [] boundsCoord cus where
     add us u = us ++ [u]
+    cus = [ (c, u) | (u, cs) <- assocs children, c <- cs ]
 
 siblings :: Array Coord [Coord]
-siblings = array boundsCoord [ (c, delete c $ nub $ concatMap (children !) us) | (c, us) <- assocs parents ]
+siblings = array boundsCoord (map aux $ assocs parents) where
+    aux (c, us) = (c, delete c $ nub $ concatMap (children !) us)
 
 defined :: Int
 defined = maxBound
@@ -93,10 +94,7 @@ emptySudoku = (a, o) where
     o = accumArray const (length digits) boundsUnit []
 
 showSudoku :: Sudoku -> String
-showSudoku (a, _) = unlines [ [ toChar i j | j <- digits ] | i <- digits ] where
+showSudoku (a, _) =  [ toChar i j | j <- digits, i <- digits ] where
     toChar i j = case [ k | k <- digits, a ! (coord ! (i, j, k)) ] of
         [k] -> k
         _   -> '.'
-
-showSudokuOneLine :: Sudoku -> String
-showSudokuOneLine = concat . lines . showSudoku
