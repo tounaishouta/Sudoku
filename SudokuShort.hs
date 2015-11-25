@@ -2,7 +2,7 @@ import Data.Array.Unboxed
 import Data.List
 
 main :: IO ()
-main = interact $ unlines . map showSudoku . solve . readSudoku
+main = interact $ unlines . map (showSudoku . head . solve . readSudoku) . lines
 
 type Sudoku = UArray (Int, Int) Char
 
