@@ -152,9 +152,11 @@ func (s *sudoku) Solve() (*sudoku, bool) {
 		return s, true
 	}
 	for _, c := range children[bmin] {
-		if ss, ok := s.clone().assign(c); ok {
-			if sss, ok := ss.Solve(); ok {
-				return sss, true
+		if s.admits[c] {
+			if ss, ok := s.clone().assign(c); ok {
+				if sss, ok := ss.Solve(); ok {
+					return sss, true
+				}
 			}
 		}
 	}
