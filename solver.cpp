@@ -99,8 +99,8 @@ class sudoku {
         static inline int to_coord(int i, int j, int k) {
             return (i * N_DIGIT + j) * N_DIGIT + k;
         }
-        static array<list<int>, N_BLOCK> children;
         static array<list<int>, N_COORD> parents;
+        static array<list<int>, N_BLOCK> children;
         static array<list<int>, N_COORD> siblings;
         static bool initialized;
         static void initialize() {
@@ -109,16 +109,16 @@ class sudoku {
                     for (int k = 0; k < N_DIGIT; k++) {
                         int c = to_coord(i, j, k);
                         int p = i / SIZE * SIZE + j / SIZE;
-                        children[to_block(GRD, i, j)].push_back(c);
-                        children[to_block(ROW, i, k)].push_back(c);
-                        children[to_block(COL, j, k)].push_back(c);
-                        children[to_block(BOX, p, k)].push_back(c);
+                        parents[c].push_back(to_block(GRD, i, j));
+                        parents[c].push_back(to_block(ROW, i, k));
+                        parents[c].push_back(to_block(COL, j, k));
+                        parents[c].push_back(to_block(BOX, p, k));
                     }
                 }
             }
-            for (int b = 0; b < N_BLOCK; b++)
-                for (int c : children[b])
-                    parents[c].push_back(b);
+            for (int c = 0; c < N_COORD; c++)
+                for (int b : parents[c])
+                    children[b].push_back(c);
             for (int c = 0; c < N_COORD; c++) {
                 set<int> cs;
                 for (int b : parents[c])
@@ -174,8 +174,8 @@ class sudoku {
         }
 };
 
-array<list<int>, sudoku::N_BLOCK> sudoku::children;
 array<list<int>, sudoku::N_COORD> sudoku::parents;
+array<list<int>, sudoku::N_BLOCK> sudoku::children;
 array<list<int>, sudoku::N_COORD> sudoku::siblings;
 bool sudoku::initialized = false;
 
