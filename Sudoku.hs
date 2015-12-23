@@ -67,7 +67,7 @@ toCoord :: Int -> Int -> Int -> Coord
 toCoord i j k = Coord $ (i * nDigit + j) * nDigit + k
 
 boundsCoord :: (Coord, Coord)
-boundsCoord = (toCoord 0 0 0, toCoord (nDigit - 1) (nDigit - 1) (nDigit - 1)) where
+boundsCoord = (Coord 0, Coord $ nDigit * nDigit * nDigit - 1)
 
 data View = GRD | ROW | COL | BOX
 
@@ -80,7 +80,7 @@ toBlock COL i j = Block $ (2 * nDigit + i) * nDigit + j
 toBlock BOX i j = Block $ (3 * nDigit + i) * nDigit + j
 
 boundsBlock :: (Block, Block)
-boundsBlock = (toBlock GRD 0 0, toBlock BOX (nDigit - 1) (nDigit - 1)) where
+boundsBlock = (Block 0, Block $ 4 * nDigit * nDigit - 1)
 
 defined :: Int
 defined = 0xDEF
