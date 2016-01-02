@@ -1,197 +1,212 @@
-#include <array>
-#include <bitset>
-#include <list>
 #include <iostream>
 #include <set>
+#include <vector>
 using namespace std;
 
+typedef int coord;
+typedef int block;
+
+enum view { GRD = 0, ROW = 1, COL = 2, BOX = 3 };
+const int SIZE    = 3;
+const int N_DIGIT = SIZE * SIZE;
+const int N_COORD = N_DIGIT * N_DIGIT * N_DIGIT;
+const int N_VIEW  = 4;
+const int N_BLOCK = N_VIEW * N_DIGIT * N_DIGIT;
+const int DEFINED = 0xDEF;
+
+inline bool is_digit(char ch) {
+    return '1' <= ch && ch <= '9';
+}
+inline int digit_of(char ch) {
+    return ch - '1';
+}
+inline char char_of(int i) {
+    return '1' + i;
+}
+inline coord coord_of(int i, int j, int k) {
+    return (i * N_DIGIT + j) * N_DIGIT + k;
+}
+inline block block_of(view v, int i, int j) {
+    return (v * N_DIGIT + i) * N_DIGIT + j;
+}
+
+vector<block> parents[N_COORD];
+vector<coord> children[N_BLOCK];
+vector<coord> siblings[N_COORD];
+
+void initialize() {
+    for (int i = 0; i < N_DIGIT; i++) {
+        for (int j = 0; j < N_DIGIT; j++) {
+            int p = i / SIZE * SIZE + j / SIZE;
+            for (int k = 0; k < N_DIGIT; k++) {
+                coord c = coord_of(i, j, k);
+                parents[c].push_back(block_of(GRD, i, j));
+                parents[c].push_back(block_of(ROW, i, k));
+                parents[c].push_back(block_of(COL, j, k));
+                parents[c].push_back(block_of(BOX, p, k));
+            }
+        }
+    }
+    for (coord c = 0; c < N_COORD; c++) {
+        for (block b : parents[c]) {
+            children[b].push_back(c);
+        }
+    }
+    set<coord> cset;
+    for (coord c = 0; c < N_COORD; c++) {
+        cset.clear();
+        for (block b : parents[c]) {
+            for (coord cc : children[b]) {
+                cset.insert(cc);
+            }
+        }
+        cset.erase(c);
+        for (coord cc : cset) {
+            siblings[c].push_back(cc);
+        }
+    }
+}
+
+class no_solution {} NO_SOLUTION;
+
 class sudoku {
+    private:
+        bool admits[N_COORD];
+        int  option[N_BLOCK];
+        sudoku& assign(coord c) {
+            if (not admits[c]) {
+                throw NO_SOLUTION;
+            }
+            set<block> bset;
+            for (coord cc : siblings[c]) {
+                if (admits[cc]) {
+                    admits[cc] = false;
+                    for (block b : parents[cc]) {
+                        bset.insert(b);
+                        option[b]--;
+                    }
+                }
+            }
+            for (block b : parents[c]) {
+                option[b] = DEFINED;
+            }
+            for (block b : bset) {
+                check(b);
+            }
+            return *this;
+        }
+        sudoku& check(block b) {
+            switch (option[b]) {
+                case 0:
+                    throw NO_SOLUTION;
+                case 1:
+                    for (coord c : children[b]) {
+                        if (admits[c]) {
+                            return assign(c);
+                        }
+                    }
+                    throw "something wrong";
+                default:
+                    return *this;
+            }
+        }
     public:
-        static class no_solution {} NO_SOLUTION;
         sudoku() {
-            if (not initialized)
-                initialize();
             clear();
         }
-        sudoku(const sudoku & s) {
-            clone(s);
+        sudoku(const sudoku& that) {
+            copy(that);
         }
-        sudoku & clear() {
-            for (int b = 0; b < N_BLOCK; b++)
-                n_option[b] = N_DIGIT;
-            for (int c = 0; c < N_COORD; c++)
-                admissible[c] = true;
-            return *this;
-        }
-        sudoku & read(string str) {
-            string::iterator its = str.begin();
-            for (int i = 0; i < N_DIGIT; i++) {
-                for (int j = 0; j < N_DIGIT; j++) {
-                    if (its == str.end())
-                        return *this;
-                    if (is_digit(*its))
-                        assign(to_coord(i, j, to_digit(*its)));
-                    its++;
-                }
+        sudoku& clear() {
+            for (coord c = 0; c < N_COORD; c++) {
+                admits[c] = true;
+            }
+            for (block b = 0; b < N_BLOCK; b++) {
+                option[b] = N_DIGIT;
             }
             return *this;
         }
-        sudoku & solve() {
-            int b_min = -1;
-            int n_min = DEFINED;
-            for (int b = 0; b < N_BLOCK; b++) {
-                if (n_option[b] < n_min) {
-                    b_min = b;
-                    n_min = n_option[b_min];
+        sudoku& copy(const sudoku& that) {
+            for (coord c = 0; c < N_COORD; c++) {
+                admits[c] = that.admits[c];
+            }
+            for (block b = 0; b < N_BLOCK; b++) {
+                option[b] = that.option[b];
+            }
+            return *this;
+        }
+        sudoku& read(string input) {
+            for (int p = 0, l = input.length(); p < l && p < N_DIGIT * N_DIGIT; p++) {
+                char ch = input[p];
+                if (not is_digit(ch)) {
+                    continue;
+                }
+                int i = p / N_DIGIT;
+                int j = p % N_DIGIT;
+                int k = digit_of(ch);
+                assign(coord_of(i, j, k));
+            }
+            return *this;
+        }
+        sudoku& solve() {
+            int minimum_option = DEFINED;
+            for (int o : option) {
+                if (o < minimum_option) {
+                    minimum_option = o;
                 }
             }
-            if (n_min == DEFINED)
+            if (minimum_option == DEFINED) {
                 return *this;
-            sudoku now = *this;
-            for (int c : children[b_min]) {
-                if (now.admissible[c]) {
-                    try {
-                        return clone(now).assign(c).solve();
-                    }
-                    catch (no_solution) {
-                        continue;
-                    }
+            }
+            block b = 0;
+            while (option[b] != minimum_option) {
+                b++;
+            }
+            sudoku temp(*this);
+            for (coord c : children[b]) {
+                try {
+                    return copy(temp).assign(c).solve();
+                }
+                catch (no_solution e){
+                    continue;
                 }
             }
             throw NO_SOLUTION;
         }
-        string show(string delim = "") {
-            string str;
+        string show() {
+            string output = "";
             for (int i = 0; i < N_DIGIT; i++) {
                 for (int j = 0; j < N_DIGIT; j++) {
-                    list<int> ks;
-                    for (int k = 0; k < N_DIGIT; k++)
-                        if (admissible[to_coord(i, j, k)])
-                            ks.push_back(k);
-                    if (ks.size() == 1)
-                        str += from_digit(ks.front());
-                    else
-                        str += '.';
-                }
-                str += delim;
-            }
-            return str;
-        }
-    private:
-        enum view { GRD = 0, ROW = 1, COL = 2, BOX = 3, N_VIEW = 4 };
-        static const int SIZE = 3;
-        static const int N_DIGIT = SIZE * SIZE;
-        static const int N_BLOCK = N_VIEW * N_DIGIT * N_DIGIT;
-        static const int N_COORD = N_DIGIT * N_DIGIT * N_DIGIT;
-        static const int DEFINED = 0xDEF;
-        static inline bool is_digit(char c) {
-            return '1' <= c and c <= '9';
-        }
-        static inline char from_digit(int k) {
-            return '1' + k;
-        }
-        static inline int to_digit(char c) {
-            return c - '1';
-        }
-        static inline int to_block(view v, int p, int q) {
-            return (v * N_DIGIT + p) * N_DIGIT + q;
-        }
-        static inline int to_coord(int i, int j, int k) {
-            return (i * N_DIGIT + j) * N_DIGIT + k;
-        }
-        static array<list<int>, N_COORD> parents;
-        static array<list<int>, N_BLOCK> children;
-        static array<list<int>, N_COORD> siblings;
-        static bool initialized;
-        static void initialize() {
-            for (int i = 0; i < N_DIGIT; i++) {
-                for (int j = 0; j < N_DIGIT; j++) {
-                    for (int k = 0; k < N_DIGIT; k++) {
-                        int c = to_coord(i, j, k);
-                        int p = i / SIZE * SIZE + j / SIZE;
-                        parents[c].push_back(to_block(GRD, i, j));
-                        parents[c].push_back(to_block(ROW, i, k));
-                        parents[c].push_back(to_block(COL, j, k));
-                        parents[c].push_back(to_block(BOX, p, k));
+                    if (option[block_of(GRD, i, j)] == DEFINED) {
+                        int k = 0;
+                        while (not admits[coord_of(i, j, k)]) {
+                            k++;
+                        }
+                        output += char_of(k);
+                    }
+                    else {
+                        output += '.';
                     }
                 }
             }
-            for (int c = 0; c < N_COORD; c++)
-                for (int b : parents[c])
-                    children[b].push_back(c);
-            for (int c = 0; c < N_COORD; c++) {
-                set<int> cs;
-                for (int b : parents[c])
-                    for (int cc : children[b])
-                        cs.insert(cc);
-                cs.erase(c);
-                for (int cc : cs)
-                    siblings[c].push_back(cc);
-            }
-        }
-        array<int, N_BLOCK> n_option;
-        bitset<N_COORD> admissible;
-        sudoku & clone(const sudoku & s) {
-            for (int b = 0; b < N_BLOCK; b++)
-                n_option[b] = s.n_option[b];
-            for (int c = 0; c < N_COORD; c++)
-                admissible[c] = s.admissible[c];
-            return *this;
-        }
-        sudoku & assign(int c) {
-            set<int> bs;
-            for (int cc : siblings[c]) {
-                if (admissible[cc]) {
-                    admissible[cc] = false;
-                    for (int b : parents[cc]) {
-                        n_option[b]--;
-                        bs.insert(b);
-                    }
-                }
-            }
-            for (int b : parents[c]) {
-                n_option[b] = DEFINED;
-                bs.erase(b);
-            }
-            for (int b : bs)
-                check(b);
-            return *this;
-        }
-        sudoku & check(int b) {
-            if (n_option[b] == 0) {
-                throw NO_SOLUTION;
-            }
-            else if (n_option[b] == 1) {
-                int c_unique = -1;
-                for (int c : children[b])
-                    if (admissible[c])
-                        c_unique = c;
-                return assign(c_unique);
-            }
-            else {
-                return *this;
-            }
+            return output;
         }
 };
 
-array<list<int>, sudoku::N_COORD> sudoku::parents;
-array<list<int>, sudoku::N_BLOCK> sudoku::children;
-array<list<int>, sudoku::N_COORD> sudoku::siblings;
-bool sudoku::initialized = false;
-
 int main() {
+    initialize();
+    string input;
     sudoku s;
-    string str;
     while (true) {
-        cin >> str;
-        if (cin.eof())
-            break;
-        try {
-            cout << s.clear().read(str).solve().show() << endl;
+        cin >> input;
+        if (cin.eof()) {
+            return 0;
         }
-        catch (sudoku::no_solution) {
+        try {
+            cout << s.clear().read(input).solve().show() << endl;
+        }
+        catch (no_solution e) {
             cout << "no solution" << endl;
         }
     }
-    return 0;
 }
