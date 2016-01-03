@@ -164,17 +164,20 @@ class sudoku {
             }
             sudoku temp(*this);
             for (coord c : children[b]) {
+                if (not temp.admits[c]) {
+                    continue;
+                }
                 try {
                     return copy(temp).assign(c).solve();
                 }
-                catch (no_solution e){
+                catch (no_solution){
                     continue;
                 }
             }
             throw NO_SOLUTION;
         }
         string show() {
-            string output = "";
+            string output;
             for (int i = 0; i < N_DIGIT; i++) {
                 for (int j = 0; j < N_DIGIT; j++) {
                     if (option[block_of(GRD, i, j)] == DEFINED) {
@@ -205,7 +208,7 @@ int main() {
         try {
             cout << s.clear().read(input).solve().show() << endl;
         }
-        catch (no_solution e) {
+        catch (no_solution) {
             cout << "no solution" << endl;
         }
     }
