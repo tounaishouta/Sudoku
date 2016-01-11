@@ -110,11 +110,11 @@ type (
 )
 
 const (
-	grd = iota
-	row
-	col
-	box
-	nView
+	grd     = iota
+	row     = iota
+	col     = iota
+	box     = iota
+	nView   = iota
 	size    = 3
 	nDigit  = size * size
 	nCoord  = nDigit * nDigit * nDigit
@@ -174,6 +174,7 @@ func (s *sudoku) copyFrom(ss *sudoku) {
 		s.option[b] = o
 	}
 }
+
 func (s *sudoku) assign(c coord) bool {
 	if !s.admits[c] {
 		return false
@@ -189,9 +190,6 @@ func (s *sudoku) assign(c coord) bool {
 		}
 	}
 	for _, b := range parents[c] {
-		if s.option[b] != 1 {
-			panic("something is wrong")
-		}
 		s.option[b] = defined
 	}
 	for _, b := range bs {
@@ -207,14 +205,12 @@ func (s *sudoku) check(b block) bool {
 	case 0:
 		return false
 	case 1:
-		for _, c := range children[b] {
-			if s.admits[c] {
-				return s.assign(c)
-			}
+		i := 0
+		for !s.admits[children[b][i]] {
+			i++
 		}
-		panic("something is wrong")
+		return s.assign(children[b][i])
 	default:
 		return true
 	}
-	return true
 }
