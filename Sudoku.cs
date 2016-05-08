@@ -79,7 +79,7 @@ namespace Sudoku
                     foreach (var cc in children[b])
                         ccs.Add(cc);
                 ccs.Remove(c);
-                siblings[c] = new List<int>(ccs);
+                siblings[c] = ccs.ToList();
             }
         }
 
@@ -143,7 +143,7 @@ namespace Sudoku
             if (!admits[c])
                 throw new NoSolutionException();
 
-            var bbs = new SortedSet<int>();
+            var bbs = new List<int>();
             foreach (var cc in siblings[c])
             {
                 if (admits[cc])
@@ -156,11 +156,9 @@ namespace Sudoku
                     }
                 }
             }
+
             foreach (var b in parents[c])
-            {
                 rest[b] = DEFINED;
-                bbs.Remove(b);
-            }
 
             foreach (var bb in bbs)
                 check(bb);
