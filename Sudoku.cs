@@ -147,6 +147,8 @@ class Sudoku
         while (queue.Count > 0)
         {
             var c0 = queue.Dequeue();
+            if (!admit[c0])
+                throw new NoSolutionException();
             foreach (var b1 in parents[c0])
             {
                 count[b1] = DEFINED;
