@@ -55,8 +55,11 @@ class Sudoku private constructor() {
     }
 
     private fun read(input: String): Sudoku? {
-        for ((ij, char) in input.substring(0, SIZE * SIZE).withIndex()) {
-            val k = DIGITS.indexOf(char)
+        for (ij in 0 until SIZE * SIZE) {
+            if (ij >= input.length) {
+                break;
+            }
+            val k = DIGITS.indexOf(input[ij])
             if (k != -1) {
                 assign(coordOf(ij / SIZE, ij % SIZE, k)) ?: return null
             }
