@@ -78,8 +78,8 @@ class Sudoku:
         raise NoSolutionException()
 
     def read(self, problem):
-        for ij, char in enumerate(problem):
-            k = DIGITS.find(char)
+        for ij in xrange(min(SIZE * SIZE, len(problem))):
+            k = DIGITS.find(problem[ij])
             if k != -1:
                 self.assign(coord(ij / SIZE, ij % SIZE, k))
         return self
