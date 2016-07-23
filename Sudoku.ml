@@ -11,6 +11,17 @@ let range n =
   in
   loop n []
 
+let iterate n f =
+  let rec loop i =
+    if i = n then
+      ()
+    else (
+      f i;
+      loop (i + 1)
+    )
+  in
+  loop 0
+
 let minimum_with_index arr =
   let l = Array.length arr in
   let rec loop (i, m) j =
@@ -129,8 +140,8 @@ let read input' =
 let show s =
   let buf = Buffer.create (size * size) in
   let () =
-    flip List.iter (range size) (fun i ->
-      flip List.iter (range size) (fun j ->
+    iterate size (fun i ->
+      iterate size (fun j ->
         match List.filter (fun k -> s.admit.(coord i j k)) (range size) with
         | [k] -> Buffer.add_char buf (String.get digits k)
         | _   -> Buffer.add_char buf '.'
@@ -151,7 +162,7 @@ let rec search s =
           try search (assign (copy s) c)
           with No_solution -> loop cs
     in
-    loop children.(b)
+    loop (List.filter (Array.get s.admit) children.(b))
 
 let solve input =
   try show (search (read input))
@@ -160,7 +171,10 @@ let solve input =
 let () =
   let rec loop () =
     match read_line_option () with
-    | None       -> ()
-    | Some input -> printf "%s\n%!" (solve input); loop ()
+    | None ->
+        ()
+    | Some input ->
+        printf "%s\n%!" (solve input);
+        loop ()
   in
   loop ()
