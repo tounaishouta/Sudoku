@@ -101,7 +101,7 @@ class Sudoku {
             return *this;
         }
 
-        Sudoku& search() {
+        Sudoku search() {
 
             while (not to_fix.empty()) {
                 Coord c0 = to_fix.front();
@@ -141,8 +141,6 @@ class Sudoku {
                 }
             }
 
-            // summary();
-
             if (min == DONE)
                 return *this;
 
@@ -161,9 +159,6 @@ class Sudoku {
         }
 
         string show() {
-
-            // summary();
-
             string output(SIZE * SIZE, '.');
             for (int i = 0; i < SIZE; i++)
                 for (int j = 0; j < SIZE; j++)
@@ -171,41 +166,6 @@ class Sudoku {
                         if (cstate[coord(i, j, k)] == FIX)
                             output[i * SIZE + j] = DIGITS[k];
             return output;
-        }
-
-        void summary() {
-            cout << endl;
-            for (int i = 0; i < SIZE; i++) {
-                for (int j = 0; j < SIZE; j++) {
-                    for (int k = 0; k < SIZE; k++) {
-                        switch (cstate[coord(i, j, k)]) {
-                            case TBD: cout << '.'; break;
-                            case FIX: cout << 'o'; break;
-                            case BAN: cout << 'x'; break;
-                            default:  cout << '?'; break;
-                        }
-                    }
-                    cout << ' ';
-                }
-                cout << endl;
-            }
-            cout << endl;
-            for (int v = 0; v < VIEW; v++) {
-                for (int p = 0; p < SIZE; p++) {
-                    for (int q = 0; q < SIZE; q++) {
-                        BState val = bstate[block(View(v), p, q)];
-                        if (0 <= val && val <= SIZE)
-                            cout << val;
-                        else if (val == DONE)
-                            cout << 'o';
-                        else
-                            cout << '?';
-                    }
-                    cout << ' ';
-                }
-                cout << endl;
-            }
-            cout << endl;
         }
 };
 
