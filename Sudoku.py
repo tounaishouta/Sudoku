@@ -10,19 +10,19 @@ SIZE  = UNIT * UNIT
 BLOCK = VIEW * SIZE * SIZE
 COORD = SIZE * SIZE * SIZE
 
-DEFINED = 0xDEF
+DONE = SIZE + 1
 
-FEASIBLE = 0
-BANNED   = 1
-FIXED    = 2
+OPEN   = 0
+FIXED  = 1
+BANNED = 2
 
 DIGITS = "123456789"
 
-def block(v, p, q):
-    return (v * SIZE + p) * SIZE + q
-
 def coord(i, j, k):
     return (i * SIZE + j) * SIZE + k
+
+def block(v, p, q):
+    return (v * SIZE + p) * SIZE + q
 
 parents = [None] * COORD
 for i in range(SIZE):
@@ -50,11 +50,11 @@ class Sudoku:
 
     def __init__(self, other = None):
         if other is None:
-            self.bstate = [SIZE] * BLOCK
-            self.cstate = [FEASIBLE] * COORD
+            self.state = [OPEN] * COORD
+            self.count = [SIZE] * BLOCK
         else:
-            self.bstate = other.bstate[:]
-            self.cstate = other.cstate[:]
+            self.state = other.state[:]
+            self.count = other.count[:]
         self.queue = []
 
     def __str__(self):
@@ -62,54 +62,57 @@ class Sudoku:
         for i in range(SIZE):
             for j in range(SIZE):
                 for k in range(SIZE):
-                    if self.cstate[coord(i, j, k)] == FIXED:
+                    if self.state[coord(i, j, k)] == FIXED:
                         result[i * SIZE + j] = DIGITS[k]
         return "".join(result)
 
-    def assign(self, c):
+    def fix(self, c):
         self.queue.append(c)
         return self
 
     def read(self, problem):
-        for ij in range(min(SIZE * SIZE, len(problem))):
-            k = DIGITS.find(problem[ij])
-            if k != -1:
-                self.assign(coord(ij // SIZE, ij % SIZE, k))
+        l = len(problem);
+        for i in range(SIZE):
+            for j in range(SIZE):
+                if i * SIZE + j < l:
+                    k = DIGITS.find(problem[i * SIZE + j])
+                    if k != -1:
+                        self.fix(coord(i, j, k))
         return self
 
     def search(self):
 
         while len(self.queue) > 0:
             c0 = self.queue.pop()
-            if self.cstate[c0] == FIXED:
+            if self.state[c0] == FIXED:
                 continue
-            if self.cstate[c0] == BANNED:
+            if self.state[c0] == BANNED:
                 raise NoSolutionException()
-            self.cstate[c0] = FIXED
+            self.state[c0] = FIXED
             for b1 in parents[c0]:
-                self.bstate[b1] = DEFINED
+                self.count[b1] = DONE
                 for c2 in children[b1]:
-                    if c2 != c0 and self.cstate[c2] == FEASIBLE:
-                        self.cstate[c2] = BANNED
+                    if c2 != c0 and self.state[c2] == OPEN:
+                        self.state[c2] = BANNED
                         for b3 in parents[c2]:
                             if b3 != b1:
-                                self.bstate[b3] -= 1
-                                if self.bstate[b3] == 0:
+                                self.count[b3] -= 1
+                                if self.count[b3] == 0:
                                     raise NoSolutionException()
-                                if self.bstate[b3] == 1:
+                                if self.count[b3] == 1:
                                     for c4 in children[b3]:
-                                        if self.cstate[c4] == FEASIBLE:
-                                            self.assign(c4)
+                                        if self.state[c4] == OPEN:
+                                            self.fix(c4)
 
-        m = min(self.bstate)
-        if m == DEFINED:
+        m = min(self.count)
+        if m == DONE:
             return self
 
-        b = self.bstate.index(m)
+        b = self.count.index(m)
         for c in children[b]:
-            if self.cstate[c] == FEASIBLE:
+            if self.state[c] == OPEN:
                 try:
-                    return Sudoku(self).assign(c).search()
+                    return Sudoku(self).fix(c).search()
                 except NoSolutionException:
                     pass
 
