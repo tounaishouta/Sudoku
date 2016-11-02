@@ -4,6 +4,13 @@ using System.Linq;
 
 using Coord = System.Int32;
 using Block = System.Int32;
+using Count = System.Int32;
+
+using static View;
+using static State;
+
+enum View { GRD, ROW, COL, BOX };
+enum State { OPEN, FIXED, BANNED };
 
 class Sudoku
 {
@@ -28,29 +35,21 @@ class Sudoku
     private class NoSolutionException : Exception
     {}
 
+    private const int VIEW  = 4;
     private const int UNIT  = 3;
     private const int SIZE  = UNIT * UNIT;
-    private const int GRD   = 0;
-    private const int ROW   = 1;
-    private const int COL   = 2;
-    private const int BOX   = 3;
-    private const int VIEW  = 4;
     private const int COORD = SIZE * SIZE * SIZE;
     private const int BLOCK = VIEW * SIZE * SIZE;
 
-    private const int OPEN   = 0;
-    private const int FIXED  = 1;
-    private const int BANNED = 2;
-
-    private const int DONE = SIZE + 1;
+    private const Count DONE = SIZE + 1;
 
     private const string DIGITS = "123456789";
 
     private static Coord coord(int i, int j, int k) =>
         (i * SIZE + j) * SIZE + k;
 
-    private static Block block(int v, int p, int q) =>
-        (v * SIZE + p) * SIZE + q;
+    private static Block block(View v, int p, int q) =>
+        ((int)v * SIZE + p) * SIZE + q;
 
     private static List<Block>[] parents  = new List<Block>[COORD];
     private static List<Coord>[] children = new List<Coord>[BLOCK];
@@ -63,7 +62,7 @@ class Sudoku
                 var p = i / UNIT * UNIT + j / UNIT;
                 for (var k = 0; k < SIZE; k++)
                     parents[coord(i, j, k)] = new List<Coord>(new[] {
-                            block(GRD, i, j),
+                            block(View.GRD, i, j),
                             block(ROW, i, k),
                             block(COL, j, k),
                             block(BOX, p, k),
@@ -77,8 +76,8 @@ class Sudoku
                 children[b].Add(c);
     }
 
-    private int[]        state = new int[COORD];
-    private int[]        count = new int[BLOCK];
+    private State[]      state = new State[COORD];
+    private Count[]      count = new Count[BLOCK];
     private Queue<Coord> queue = new Queue<Coord>();
 
     private Sudoku()
