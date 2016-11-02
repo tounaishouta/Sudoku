@@ -62,7 +62,7 @@ class Sudoku
                 var p = i / UNIT * UNIT + j / UNIT;
                 for (var k = 0; k < SIZE; k++)
                     parents[coord(i, j, k)] = new List<Coord>(new[] {
-                            block(View.GRD, i, j),
+                            block(GRD, i, j),
                             block(ROW, i, k),
                             block(COL, j, k),
                             block(BOX, p, k),
