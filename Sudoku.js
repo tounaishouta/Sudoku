@@ -41,7 +41,7 @@ const children = Array(BLOCK);
 for (let b = 0; b < BLOCK; b++)
   children[b] = Array();
 for (let c = 0; c < COORD; c++)
-  for (let b of parents[c])
+  for (const b of parents[c])
     children[b].push(c);
 
 class Sudoku {
@@ -85,18 +85,18 @@ class Sudoku {
       if (this.state[c0] === BANNED)
         throw NO_SOLUTION;
       this.state[c0] = FIXED;
-      for (let b1 of parents[c0]) {
+      for (const b1 of parents[c0]) {
         this.count[b1] = DONE;
-        for (let c2 of children[b1]) {
+        for (const c2 of children[b1]) {
           if (c2 !== c0 && this.state[c2] === OPEN) {
             this.state[c2] = BANNED;
-            for (let b3 of parents[c2]) {
+            for (const b3 of parents[c2]) {
               if (b3 !== b1) {
                 this.count[b3]--;
                 if (this.count[b3] === 0)
                   throw NO_SOLUTION;
                 if (this.count[b3] === 1)
-                  for (let c4 of children[b3])
+                  for (const c4 of children[b3])
                     if (this.state[c4] === OPEN)
                       this.fix(c4);
               }
@@ -111,7 +111,7 @@ class Sudoku {
       return this;
 
     const b = this.count.indexOf(min);
-    for (let c of children[b]) {
+    for (const c of children[b]) {
       if (this.state[c] === OPEN) {
         try {
           return new Sudoku(this).fix(c).search();
