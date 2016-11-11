@@ -1,20 +1,20 @@
 import fileinput
 
+UNIT  = 3
 GRD   = 0
 ROW   = 1
 COL   = 2
 BOX   = 3
 VIEW  = 4
-UNIT  = 3
 SIZE  = UNIT * UNIT
-BLOCK = VIEW * SIZE * SIZE
 COORD = SIZE * SIZE * SIZE
-
-DONE = SIZE + 1
+BLOCK = VIEW * SIZE * SIZE
 
 OPEN   = 0
 FIXED  = 1
 BANNED = 2
+
+DONE = SIZE + 1
 
 DIGITS = "123456789"
 
