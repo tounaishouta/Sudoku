@@ -1,24 +1,17 @@
 'use strict';
 
-const GRD   = 0;
-const ROW   = 1;
-const COL   = 2;
-const BOX   = 3;
-const VIEW  = 4;
+const VIEW  = { GRD: 0, ROW: 1, COL: 2, BOX: 3 };
+const STATE = { OPEN: 0, FIXED: 1, BANNED: 2 };
+
 const UNIT  = 3;
 const SIZE  = UNIT * UNIT;
 const COORD = SIZE * SIZE * SIZE;
-const BLOCK = VIEW * SIZE * SIZE;
-
-const OPEN   = 0;
-const FIXED  = 1;
-const BANNED = 2;
-
-const DONE = SIZE + 1;
+const BLOCK = Object.keys(VIEW).length * SIZE * SIZE;
+const DONE  = SIZE + 1;
 
 const DIGITS = '123456789';
 
-const NO_SOLUTION = "NO SOLUTION";
+const NO_SOLUTION = 'NO SOLUTION';
 
 const coord = (i, j, k) => (i * SIZE + j) * SIZE + k;
 const block = (v, p, q) => (v * SIZE + p) * SIZE + q;
@@ -29,10 +22,10 @@ for (let i = 0; i < SIZE; i++) {
     const p = Math.floor(i / UNIT) * UNIT + Math.floor(j / UNIT);
     for (let k = 0; k < SIZE; k++)
       parents[coord(i, j, k)] = [
-        block(GRD, i, j),
-        block(ROW, i, k),
-        block(COL, j, k),
-        block(BOX, p, k),
+        block(VIEW.GRD, i, j),
+        block(VIEW.ROW, i, k),
+        block(VIEW.COL, j, k),
+        block(VIEW.BOX, p, k),
       ];
   }
 }
@@ -52,13 +45,13 @@ class Sudoku {
       this.count = that.count.slice();
     }
     else {
-      this.state = Array(COORD).fill(OPEN);
+      this.state = Array(COORD).fill(STATE.OPEN);
       this.count = Array(BLOCK).fill(SIZE);
     }
     this.queue = [];
   }
 
-  fix(c) {
+  enqueue(c) {
     this.queue.push(c);
     return this;
   }
@@ -69,40 +62,35 @@ class Sudoku {
         if (i * SIZE + j < input.length) {
           const k = DIGITS.indexOf(input[i * SIZE + j]);
           if (k !== -1)
-            this.fix(coord(i, j, k));
+            this.enqueue(coord(i, j, k));
         }
       }
     }
     return this;
   }
 
+  show() {
+    const output = Array(SIZE * SIZE).fill('.');
+    for (let i = 0; i < SIZE; i++)
+      for (let j = 0; j < SIZE; j++)
+        for (let k = 0; k < SIZE; k++)
+          if (this.state[coord(i, j, k)] === STATE.FIXED)
+            output[i * SIZE + j] = DIGITS[k];
+    return output.join('');
+  }
+
   search() {
 
     while (this.queue.length > 0) {
-      const c0 = this.queue.shift();
-      if (this.state[c0] === FIXED)
-        continue;
-      if (this.state[c0] === BANNED)
-        throw NO_SOLUTION;
-      this.state[c0] = FIXED;
-      for (const b1 of parents[c0]) {
-        this.count[b1] = DONE;
-        for (const c2 of children[b1]) {
-          if (c2 !== c0 && this.state[c2] === OPEN) {
-            this.state[c2] = BANNED;
-            for (const b3 of parents[c2]) {
-              if (b3 !== b1) {
-                this.count[b3]--;
-                if (this.count[b3] === 0)
-                  throw NO_SOLUTION;
-                if (this.count[b3] === 1)
-                  for (const c4 of children[b3])
-                    if (this.state[c4] === OPEN)
-                      this.fix(c4);
-              }
-            }
-          }
-        }
+      const c = this.queue.shift();
+      switch (this.state[c]) {
+        case STATE.OPEN:
+          this.fix(c);
+          break;
+        case STATE.FIXED:
+          break;
+        case STATE.BANNED:
+          throw NO_SOLUTION;
       }
     }
 
@@ -112,12 +100,13 @@ class Sudoku {
 
     const b = this.count.indexOf(min);
     for (const c of children[b]) {
-      if (this.state[c] === OPEN) {
+      if (this.state[c] === STATE.OPEN) {
         try {
-          return new Sudoku(this).fix(c).search();
+          return new Sudoku(this).enqueue(c).search();
         }
         catch (e) {
-          console.assert(e === NO_SOLUTION);
+          if (e !== NO_SOLUTION)
+            throw e;
         }
       }
     }
@@ -125,14 +114,34 @@ class Sudoku {
     throw NO_SOLUTION;
   }
 
-  show() {
-    const output = Array(SIZE * SIZE).fill('.');
-    for (let i = 0; i < SIZE; i++)
-      for (let j = 0; j < SIZE; j++)
-        for (let k = 0; k < SIZE; k++)
-          if (this.state[coord(i, j, k)] === FIXED)
-            output[i * SIZE + j] = DIGITS[k];
-    return output.join('');
+  fix(c) {
+      this.state[c] = STATE.FIXED;
+      for (const b of parents[c])
+        this.mark(b);
+  }
+
+  mark(b) {
+    this.count[b] = DONE;
+    for (const c of children[b])
+      if (this.state[c] == STATE.OPEN)
+        this.ban(c);
+  }
+
+  ban(c) {
+    this.state[c] = STATE.BANNED;
+    for (const b of parents[c])
+      if (this.count[b] != DONE)
+        this.countdown(b);
+  }
+
+  countdown(b) {
+    this.count[b]--;
+    if (this.count[b] == 0)
+      throw NO_SOLUTION;
+    if (this.count[b] == 1)
+      for (const c of children[b])
+        if (this.state[c] == STATE.OPEN)
+          this.enqueue(c);
   }
 }
 
@@ -141,7 +150,8 @@ function solve(input) {
     return new Sudoku().read(input).search().show();
   }
   catch (e) {
-    console.assert(e === NO_SOLUTION);
+    if (e !== NO_SOLUTION)
+      throw e;
     return e;
   }
 }
