@@ -6,29 +6,30 @@ fun main(args: Array<String>) {
 
 class Sudoku {
 
+    enum class View { GRD, ROW, COL, BOX }
+
+    enum class State { OPEN, FIXED, BANNED }
+
+    class NoChoice : Exception("NoChoice");
+
     companion object {
 
         const val UNIT  = 3
-        const val GRD   = 0
-        const val ROW   = 1
-        const val COL   = 2
-        const val BOX   = 3
-        const val VIEW  = 4
         const val SIZE  = UNIT * UNIT
         const val COORD = SIZE * SIZE * SIZE
-        const val BLOCK = VIEW * SIZE * SIZE
-
-        const val OPEN   = 0
-        const val FIXED  = 1
-        const val BANNED = 2
-
-        const val DONE = SIZE + 1
+        const val BLOCK = 4 * SIZE * SIZE
+        const val DONE  = SIZE + 1
 
         const val DIGITS = "123456789"
 
         fun coord(i: Int, j: Int, k: Int): Int = (i * SIZE + j) * SIZE + k
 
-        fun block(v: Int, p: Int, q: Int): Int = (v * SIZE + p) * SIZE + q
+        fun block(v: View, p: Int, q: Int): Int = when (v) {
+            View.GRD -> (0 * SIZE + p) * SIZE + q
+            View.ROW -> (1 * SIZE + p) * SIZE + q
+            View.COL -> (2 * SIZE + p) * SIZE + q
+            View.BOX -> (3 * SIZE + p) * SIZE + q
+        }
 
         val parents = Array(COORD) { mutableListOf<Int>() } .apply {
             for (i in 0 until SIZE) {
@@ -36,10 +37,10 @@ class Sudoku {
                     val p = i / UNIT * UNIT + j / UNIT
                     for (k in 0 until SIZE) {
                         get(coord(i, j, k)).apply {
-                            add(block(GRD, i, j))
-                            add(block(ROW, i, k))
-                            add(block(COL, j, k))
-                            add(block(BOX, p, k))
+                            add(block(View.GRD, i, j))
+                            add(block(View.ROW, i, k))
+                            add(block(View.COL, j, k))
+                            add(block(View.BOX, p, k))
                         }
                     }
                 }
@@ -47,11 +48,9 @@ class Sudoku {
         }
 
         val children = Array(BLOCK) { mutableListOf<Int>() } .apply {
-            for (c in 0 until COORD) {
-                for (b in parents[c]) {
+            for (c in 0 until COORD)
+                for (b in parents[c])
                     get(b).add(c)
-                }
-            }
         }
 
         fun solve(input: String): String {
@@ -59,12 +58,12 @@ class Sudoku {
         }
     }
 
-    val state: IntArray
+    val state: Array<State>
     val count: IntArray
     val queue: MutableList<Int>
 
     constructor() {
-        state = IntArray(COORD) { OPEN }
+        state = Array<State>(COORD) { State.OPEN }
         count = IntArray(BLOCK) { SIZE }
         queue = mutableListOf<Int>()
     }
@@ -75,7 +74,7 @@ class Sudoku {
         queue = mutableListOf<Int>()
     }
 
-    fun fix(c: Int): Sudoku {
+    fun enqueue(c: Int): Sudoku {
         queue.add(c)
         return this
     }
@@ -86,9 +85,8 @@ class Sudoku {
             for (j in 0 until SIZE) {
                 if (i * SIZE + j < len) {
                     val k = DIGITS.indexOf(input[i * SIZE + j])
-                    if (k != -1) {
-                        fix(coord(i, j, k))
-                    }
+                    if (k != -1)
+                        enqueue(coord(i, j, k))
                 }
             }
         }
@@ -97,68 +95,69 @@ class Sudoku {
 
     fun show(): String {
         val output = CharArray(SIZE * SIZE) { '.' }
-        for (i in 0 until SIZE) {
-            for (j in 0 until SIZE) {
-                for (k in 0 until SIZE) {
-                    if (state[coord(i, j, k)] == FIXED) {
+        for (i in 0 until SIZE)
+            for (j in 0 until SIZE)
+                for (k in 0 until SIZE)
+                    if (state[coord(i, j, k)] == State.FIXED)
                         output[i * SIZE + j] = DIGITS[k]
-                    }
-                }
-            }
-        }
         return String(output)
     }
 
     fun search(): Sudoku? {
 
         while (!queue.isEmpty()) {
-            val c0 = queue.removeAt(0)
-            if (state[c0] == FIXED) {
-                continue
-            }
-            if (state[c0] == BANNED) {
-                return null
-            }
-            state[c0] = FIXED
-            for (b1 in parents[c0]) {
-                count[b1] = DONE
-                for (c2 in children[b1]) {
-                    if (c2 != c0 && state[c2] == OPEN) {
-                        state[c2] = BANNED
-                        for (b3 in parents[c2]) {
-                            if (b3 != b1) {
-                                count[b3]--
-                                if (count[b3] == 0) {
-                                    return null
-                                }
-                                if (count[b3] == 1) {
-                                    for (c4 in children[b3]) {
-                                        if (state[c4] == OPEN) {
-                                            fix(c4)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+            val c = queue.removeAt(0)
+            when (state[c]) {
+                State.OPEN ->
+                    try { fix(c) } catch (_: NoChoice) { return null }
+                State.FIXED ->
+                    Unit
+                State.BANNED ->
+                    return null
             }
         }
 
         val m = count.min()!!
-        if (m == DONE) {
+        if (m == DONE)
             return this
-        }
 
         val b = count.indexOf(m)
-        for (c in children[b]) {
-            if (state[c] == OPEN) {
-                Sudoku(this).fix(c).search()?.let {
-                    return it
-                }
-            }
-        }
+        for (c in children[b])
+            if (state[c] == State.OPEN)
+                Sudoku(this).enqueue(c).search()?.let { return it }
 
         return null
+    }
+
+    fun fix(c: Int) {
+        state[c] = State.FIXED
+        for (b in parents[c])
+            mark(b)
+    }
+
+    fun mark(b: Int) {
+        count[b] = DONE
+        for (c in children[b])
+            if (state[c] == State.OPEN)
+                ban(c)
+    }
+
+    fun ban(c: Int) {
+        state[c] = State.BANNED
+        for (b in parents[c])
+            if (count[b] != DONE)
+                countdown(b)
+    }
+
+    fun countdown(b: Int) {
+        count[b]--
+        when (count[b]) {
+            0 -> throw NoChoice();
+            1 ->
+                for (c in children[b])
+                    if (state[c] == State.OPEN)
+                        enqueue(c);
+            else -> Unit
+        }
     }
 }
