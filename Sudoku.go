@@ -160,7 +160,7 @@ func (s *Sudoku) search() (*Sudoku, bool) {
 		s.queue = s.queue[1:]
 		switch s.state[c] {
 		case open:
-			if !s.fix(c) {
+			if ok := s.fix(c); !ok {
 				return nil, false
 			}
 		case fixed:
@@ -193,51 +193,47 @@ func (s *Sudoku) search() (*Sudoku, bool) {
 	return nil, false
 }
 
-func (s *Sudoku) fix(c Coord) bool {
+func (s *Sudoku) fix(c Coord) (ok bool) {
+	defer func() {
+		if err := recover(); err != nil {
+			ok = false
+		}
+	}()
 	s.state[c] = fixed
 	for _, b := range parents[c] {
-		if !s.markDone(b) {
-			return false
-		}
+		s.markDone(b)
 	}
 	return true
 }
 
-func (s *Sudoku) markDone(b Block) bool {
+func (s *Sudoku) markDone(b Block) {
 	s.count[b] = done
 	for _, c := range children[b] {
 		if s.state[c] == open {
-			if !s.ban(c) {
-				return false
-			}
+			s.ban(c)
 		}
 	}
-	return true
 }
 
-func (s *Sudoku) ban(c Coord) bool {
+func (s *Sudoku) ban(c Coord) {
 	s.state[c] = banned
 	for _, b := range parents[c] {
 		if s.count[b] != done {
-			if !s.countdown(b) {
-				return false
-			}
+			s.countdown(b)
 		}
 	}
-	return true
 }
 
-func (s *Sudoku) countdown(b Block) bool {
+func (s *Sudoku) countdown(b Block) {
 	s.count[b]--
-	if s.count[b] == 0 {
-		return false
-	}
-	if s.count[b] == 1 {
+	switch s.count[b] {
+	case 0:
+		panic("No choice!!")
+	case 1:
 		for _, c := range children[b] {
 			if s.state[c] == open {
 				s.enqueue(c)
 			}
 		}
 	}
-	return true
 }
