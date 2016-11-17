@@ -1,16 +1,21 @@
-GRD   = 0
-ROW   = 1
-COL   = 2
-BOX   = 3
-VIEW  = 4
 UNIT  = 3
+VIEW  = 4
 SIZE  = UNIT * UNIT
 COORD = SIZE * SIZE * SIZE
 BLOCK = VIEW * SIZE * SIZE
 
-OPEN   = 0
-FIXED  = 1
-BANNED = 2
+module View
+  GRD = 0
+  ROW = 1
+  COL = 2
+  BOX = 3
+end
+
+module State
+  OPEN   = 0
+  FIXED  = 1
+  BANNED = 2
+end
 
 DONE = SIZE + 1
 
@@ -30,10 +35,10 @@ SIZE.times do |i|
     p = i / UNIT * UNIT + j / UNIT
     SIZE.times do |k|
       PARENTS[coord(i, j, k)] = [
-        block(GRD, i, j),
-        block(ROW, i, k),
-        block(COL, j, k),
-        block(BOX, p, k),
+        block(View::GRD, i, j),
+        block(View::ROW, i, k),
+        block(View::COL, j, k),
+        block(View::BOX, p, k),
       ]
     end
   end
@@ -58,7 +63,7 @@ class Sudoku
 
   def initialize(that = nil)
     if that == nil
-      @state = Array.new(COORD, OPEN)
+      @state = Array.new(COORD, State::OPEN)
       @count = Array.new(BLOCK, SIZE)
     else
       @state = that.state.dup
@@ -67,7 +72,7 @@ class Sudoku
     @queue = Array.new
   end
 
-  def fix(c)
+  def enqueue(c)
     @queue.push(c)
     return self
   end
@@ -77,38 +82,38 @@ class Sudoku
       SIZE.times do |j|
         if i * SIZE + j < input.length
           k = DIGITS.index(input[i * SIZE + j])
-          fix(coord(i, j, k)) unless k.nil?
+          enqueue(coord(i, j, k)) unless k.nil?
         end
       end
     end
     return self
   end
 
+  def to_s
+    output = Array.new(SIZE * SIZE, ".")
+    SIZE.times do |i|
+      SIZE.times do |j|
+        SIZE.times do |k|
+          if @state[coord(i, j, k)] == State::FIXED
+            output[i * SIZE + j] = DIGITS[k]
+          end
+        end
+      end
+    end
+    output.join
+  end
+
   def search
 
     until @queue.empty?
-      c0 = @queue.shift
-      next if @state[c0] == FIXED
-      raise NoSolutionError.new if @state[c0] == BANNED
-      @state[c0] = FIXED
-      PARENTS[c0].each do |b1|
-        @count[b1] = DONE
-        CHILDREN[b1].each do |c2|
-          if c2 != c0 and @state[c2] == OPEN
-            @state[c2] = BANNED
-            PARENTS[c2].each do |b3|
-              if b3 != b1
-                @count[b3] -= 1
-                raise NoSolutionError.new if @count[b3] == 0
-                if @count[b3] == 1
-                  CHILDREN[b3].each do |c4|
-                    fix(c4) if @state[c4] == OPEN
-                  end
-                end
-              end
-            end
-          end
-        end
+      c = @queue.shift
+      case @state[c]
+      when State::OPEN
+        fix(c)
+      when State::FIXED
+        nil
+      when State::BANNED
+        raise NoSolutionError.new
       end
     end
 
@@ -117,9 +122,9 @@ class Sudoku
 
     b = @count.index(m)
     CHILDREN[b].each do |c|
-      if @state[c] == OPEN
+      if @state[c] == State::OPEN
         begin
-          return Sudoku.new(self).fix(c).search
+          return Sudoku.new(self).enqueue(c).search
         rescue NoSolutionError
         end
       end
@@ -128,18 +133,29 @@ class Sudoku
     raise NoSolutionError.new
   end
 
-  def to_s
-    output = Array.new(SIZE * SIZE, ".")
-    SIZE.times do |i|
-      SIZE.times do |j|
-        SIZE.times do |k|
-          if @state[coord(i, j, k)] == FIXED
-            output[i * SIZE + j] = DIGITS[k]
-          end
-        end
-      end
+  def fix(c)
+    @state[c] = State::FIXED
+    PARENTS[c].each { |b| mark(b) }
+  end
+
+  def mark(b)
+    @count[b] = DONE
+    CHILDREN[b].each { |c| ban(c) if @state[c] == State::OPEN }
+  end
+
+  def ban(c)
+    @state[c] = State::BANNED
+    PARENTS[c].each { |b| countdown(b) if @count[b] != DONE }
+  end
+
+  def countdown(b)
+    @count[b] -= 1
+    case @count[b]
+    when 0
+      raise NoSolutionError.new
+    when 1
+      CHILDREN[b].each { |c| enqueue(c) if @state[c] == State::OPEN }
     end
-    output.join
   end
 end
 
