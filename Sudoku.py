@@ -1,14 +1,15 @@
 import fileinput
 
 UNIT  = 3
-GRD   = 0
-ROW   = 1
-COL   = 2
-BOX   = 3
 VIEW  = 4
 SIZE  = UNIT * UNIT
 COORD = SIZE * SIZE * SIZE
 BLOCK = VIEW * SIZE * SIZE
+
+GRD = 0
+ROW = 1
+COL = 2
+BOX = 3
 
 OPEN   = 0
 FIXED  = 1
@@ -66,7 +67,7 @@ class Sudoku:
                         result[i * SIZE + j] = DIGITS[k]
         return "".join(result)
 
-    def fix(self, c):
+    def enqueue(self, c):
         self.queue.append(c)
         return self
 
@@ -77,32 +78,19 @@ class Sudoku:
                 if i * SIZE + j < l:
                     k = DIGITS.find(problem[i * SIZE + j])
                     if k != -1:
-                        self.fix(coord(i, j, k))
+                        self.enqueue(coord(i, j, k))
         return self
 
     def search(self):
 
         while len(self.queue) > 0:
-            c0 = self.queue.pop()
-            if self.state[c0] == FIXED:
+            c = self.queue.pop()
+            if self.state[c] == OPEN:
+                self.fix(c)
+            elif self.state[c] == FIXED:
                 continue
-            if self.state[c0] == BANNED:
+            elif self.state[c] == BANNED:
                 raise NoSolutionException()
-            self.state[c0] = FIXED
-            for b1 in parents[c0]:
-                self.count[b1] = DONE
-                for c2 in children[b1]:
-                    if c2 != c0 and self.state[c2] == OPEN:
-                        self.state[c2] = BANNED
-                        for b3 in parents[c2]:
-                            if b3 != b1:
-                                self.count[b3] -= 1
-                                if self.count[b3] == 0:
-                                    raise NoSolutionException()
-                                if self.count[b3] == 1:
-                                    for c4 in children[b3]:
-                                        if self.state[c4] == OPEN:
-                                            self.fix(c4)
 
         m = min(self.count)
         if m == DONE:
@@ -112,11 +100,37 @@ class Sudoku:
         for c in children[b]:
             if self.state[c] == OPEN:
                 try:
-                    return Sudoku(self).fix(c).search()
+                    return Sudoku(self).enqueue(c).search()
                 except NoSolutionException:
                     pass
 
         raise NoSolutionException()
+
+    def fix(self, c):
+        self.state[c] = FIXED
+        for b in parents[c]:
+            self.mark(b)
+
+    def mark(self, b):
+        self.count[b] = DONE
+        for c in children[b]:
+            if self.state[c] == OPEN:
+                self.ban(c)
+
+    def ban(self, c):
+        self.state[c] = BANNED
+        for b in parents[c]:
+            if self.count[b] != DONE:
+                self.countdown(b)
+
+    def countdown(self, b):
+        self.count[b] -= 1
+        if self.count[b] == 0:
+            raise NoSolutionException
+        if self.count[b] == 1:
+            for c in children[b]:
+                if self.state[c] == OPEN:
+                    self.enqueue(c)
 
 def solve(problem):
     try:
