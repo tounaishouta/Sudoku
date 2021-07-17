@@ -1,161 +1,158 @@
-from __future__ import annotations
-from typing import Optional
-from enum import IntEnum
-
-
 def main():
     while True:
         try:
-            print(solve(input()))
+            print(Sudoku.solve(input()))
         except EOFError:
             break
 
 
-def solve(problem: str) -> str:
-    try:
-        return str(Sudoku().feed(problem).search())
-    except NoSolutionException:
-        return 'NO SOLUTION'
-
-
-UNIT = 3
-SIZE = UNIT * UNIT
-DIGITS = '123456789'
-
-Coord = int
-Block = int
-
-
-class State(IntEnum):
-    TBD = 0
-    TRUE = 1
-    FALSE = 2
-
-
-class View(IntEnum):
-    GRD = 0
-    ROW = 1
-    COL = 2
-    BOX = 3
-
-
-def coord(n: int, i: int, j: int) -> Coord:
-    return (n * SIZE + i) * SIZE + j
-
-
-def block(v: int, p: int, q: int) -> Block:
-    return (v * SIZE + p) * SIZE + q
-
-
-COORD = SIZE * SIZE * SIZE
-BLOCK = len(View) * SIZE * SIZE
-
-DONE = SIZE + 1
-
-relations: [(Coord, Block)] = [
-    (coord(n, i, j), b)
-    for n in range(SIZE)
-    for i in range(SIZE)
-    for j in range(SIZE)
-    for b in [
-        block(View.GRD, i, j),
-        block(View.ROW, n, i),
-        block(View.COL, n, j),
-        block(View.BOX, n, i // UNIT * UNIT + j // UNIT),
-    ]
-]
-
-parents: [[Block]] = [
-    [b for (c, b) in relations if c == c0]
-    for c0 in range(COORD)
-]
-
-children: [[Coord]] = [
-    [c for (c, b) in relations if b == b0]
-    for b0 in range(BLOCK)
-]
+class NoSolutionException(Exception):
+    pass
 
 
 class Sudoku:
 
-    def __init__(self, other: Optional[Sudoku] = None):
-        if other:
+    @classmethod
+    def solve(cls, hints):
+        for s in cls().feed(hints).search():
+            return str(s)
+        return 'NO SOLUTION'
+
+    @classmethod
+    def initialize(cls):
+        if hasattr(cls, 'initialized'):
+            return
+
+        cls.unit = 3
+        cls.size = cls.unit * cls.unit
+        cls.digits = '123456789'
+        assert len(cls.digits) == cls.size
+
+        cls.coords = cls.size * cls.size * cls.size
+        cls.groups = 4 * cls.size * cls.size
+
+        cls.parents = [None for _ in range(cls.coords)]
+        for i in range(cls.size):
+            for j in range(cls.size):
+                k = i // cls.unit * cls.unit + j // cls.unit
+                for n in range(cls.size):
+                    cls.parents[cls.coord(i, j, n)] = [
+                        cls.group(0, i, j),
+                        cls.group(1, i, n),
+                        cls.group(2, j, n),
+                        cls.group(3, k, n),
+                    ]
+
+        cls.children = [[] for _ in range(cls.groups)]
+        for c in range(cls.coords):
+            for g in cls.parents[c]:
+                cls.children[g].append(c)
+
+        cls.undefined = 0
+        cls.true = 1
+        cls.false = 2
+
+        cls.defined = cls.size + 1
+
+        cls.initialized = True
+
+    @classmethod
+    def coord(cls, i, j, n):
+        return (i * cls.size + j) * cls.size + n
+
+    @classmethod
+    def group(cls, v, p, q):
+        return (v * cls.size + p) * cls.size + q
+
+    def __init__(self, other=None):
+        self.initialize()
+        if other is None:
+            self.state = [self.undefined] * self.coords
+            self.count = [self.size] * self.groups
+            self.queue = []
+        else:
             self.state = other.state[:]
             self.count = other.count[:]
             self.queue = other.queue[:]
-        else:
-            self.state = [State.TBD] * COORD
-            self.count = [SIZE] * BLOCK
-            self.queue = []
 
-    def __str__(self) -> str:
-        res = ['.'] * (SIZE * SIZE)
-        for n in range(SIZE):
-            for i in range(SIZE):
-                for j in range(SIZE):
-                    if self.state[coord(n, i, j)] == State.TRUE:
-                        res[i * SIZE + j] = DIGITS[n]
-        return ''.join(res)
-
-    def feed(self, problem: str) -> Sudoku:
-        for ij, ch in enumerate(problem):
-            if ch in DIGITS:
-                n = DIGITS.index(ch)
-                i, j = divmod(ij, SIZE)
-                self.enqueue(coord(n, i, j))
-        return self
-
-    def enqueue(self, c: Coord) -> Sudoku:
+    def enqueue(self, c):
         self.queue.append(c)
         return self
 
-    def search(self) -> Sudoku:
+    def feed(self, hints):
+        ijs = [(i, j) for i in range(self.size) for j in range(self.size)]
+        for (i, j), ch in zip(ijs, hints):
+            if ch in self.digits:
+                n = self.digits.index(ch)
+                self.queue.append(self.coord(i, j, n))
+        return self
+
+    def search(self):
+
         while self.queue:
-            c0 = self.queue.pop()
-            if self.state[c0] == State.TRUE:
-                continue
-            if self.state[c0] == State.FALSE:
-                raise NoSolutionException()
-            assert self.state[c0] == State.TBD
-            self.state[c0] = State.TRUE
-            for b1 in parents[c0]:
-                assert self.count[b1] != DONE
-                self.count[b1] = DONE
-                for c2 in children[b1]:
-                    if c2 == c0:
-                        continue
-                    if self.state[c2] == State.TRUE:
-                        raise NoSolutionException()
-                    if self.state[c2] == State.FALSE:
-                        continue
-                    assert self.state[c2] == State.TBD
-                    self.state[c2] = State.FALSE
-                    for b3 in parents[c2]:
-                        if b3 == b1:
-                            continue
-                        assert self.count[b3] != DONE
-                        self.count[b3] -= 1
-                        if self.count[b3] == 0:
-                            raise NoSolutionException()
-                        if self.count[b3] == 1:
-                            for c4 in children[b3]:
-                                if self.state[c4] == State.TBD:
-                                    self.enqueue(c4)
+            self.assign(self.queue.pop())
+
         m = min(self.count)
-        if m == DONE:
-            return self
-        b = self.count.index(m)
-        for c in children[b]:
-            if self.state[c] == State.TBD:
-                try:
-                    return Sudoku(self).enqueue(c).search()
-                except NoSolutionException:
-                    pass
-        raise NoSolutionException()
+        if m == self.defined:
+            yield self
+        else:
+            b = self.count.index(m)
+            for c in self.children[b]:
+                if self.state[c] == self.undefined:
+                    try:
+                        yield from self.clone().enqueue(c).search()
+                    except NoSolutionException:
+                        pass
 
+    def assign(self, c):
+        if self.state[c] == self.true:
+            return
+        if self.state[c] == self.false:
+            raise NoSolutionException
+        assert self.state[c] == self.undefined
+        self.state[c] = self.true
+        for b in self.parents[c]:
+            self.close(b)
 
-class NoSolutionException(Exception):
-    pass
+    def close(self, b):
+        assert self.count[b] != self.defined
+        assert self.count[b] > 0
+        self.count[b] = self.defined
+        for c in self.children[b]:
+            self.ban(c)
+
+    def ban(self, c):
+        if self.state[c] == self.true:
+            return
+        if self.state[c] == self.false:
+            return
+        assert self.state[c] == self.undefined
+        self.state[c] = self.false
+        for b in self.parents[c]:
+            self.countdown(b)
+
+    def countdown(self, b):
+        if self.count[b] == self.defined:
+            return
+        self.count[b] -= 1
+        if self.count[b] == 0:
+            raise NoSolutionException
+        if self.count[b] == 1:
+            for c in self.children[b]:
+                if self.state[c] == self.undefined:
+                    self.enqueue(c)
+
+    def clone(self):
+        return self.__class__(self)
+
+    def __str__(self):
+        matrix = [['.' for _ in range(self.size)] for _ in range(self.size)]
+        for i in range(self.size):
+            for j in range(self.size):
+                for n in range(self.size):
+                    if self.state[self.coord(i, j, n)] == self.true:
+                        matrix[i][j] = self.digits[n]
+        return ''.join(''.join(row) for row in matrix)
 
 
 if __name__ == '__main__':
